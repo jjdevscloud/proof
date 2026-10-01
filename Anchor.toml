@@ -1,0 +1,21 @@
+[toolchain]
+anchor_version = "0.31.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+mock_curve = "4vocGpRYJaXoDKP5KDeUv566kgAzsKSDkvCqj2pVL7M4"
+proof_vault = "7wGSg7XW8KGGHF772PUoNnGKAKWSCFuRu3tdsLXEY62D"
+
+[programs.localnet]
+mock_curve = "4vocGpRYJaXoDKP5KDeUv566kgAzsKSDkvCqj2pVL7M4"
+proof_vault = "7wGSg7XW8KGGHF772PUoNnGKAKWSCFuRu3tdsLXEY62D"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "/mnt/c/git/rarity/devnet/keys/payer.json"

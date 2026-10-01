@@ -1,0 +1,15 @@
+{
+  "name": "proof-devnet",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "keys": "node keys.ts",
+    "setup": "node setup.ts",
+    "scenario": "node scenario.ts",
+    "verify": "node verify.ts"
+  },
+  "dependencies": {
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0"
+  }
+}

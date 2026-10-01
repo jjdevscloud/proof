@@ -1,0 +1,10 @@
+node_modules/
+target/
+indexer/data/
+indexer/config.json
+.anchor/
+devnet/keys/
+devnet/state.json
+indexer/config.devnet*.json
+indexer/data*/
+indexer/*.log
