@@ -1,0 +1,270 @@
+// Wallet connection, proof_vault transactions, and the on-chain buyer checks (SPEC §9.1).
+import {
+  Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction,
+} from '@solana/web3.js';
+import {
+  TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync, unpackAccount,
+} from '@solana/spl-token';
+import { useSyncExternalStore } from 'react';
+import type { Config } from './api.ts';
+
+export const RPC_URL = import.meta.env.VITE_RPC_URL ?? 'https://api.devnet.solana.com';
+export const connection = new Connection(RPC_URL, 'confirmed');
+
+// ---- wallet (injected providers: Phantom, Solflare, Backpack) ----
+
+type Provider = {
+  publicKey: PublicKey | null;
+  connect: () => Promise<{ publicKey: PublicKey } | void>;
+  disconnect: () => Promise<void>;
+  signTransaction: (tx: Transaction) => Promise<Transaction>;
+  on?: (event: string, cb: (...args: any[]) => void) => void;
+};
+
+function provider(): Provider | null {
+  const w = window as any;
+  return w.phantom?.solana ?? w.solflare ?? w.backpack ?? w.solana ?? null;
+}
+
+let connected: string | null = null;
+const subs = new Set<() => void>();
+const emit = () => subs.forEach((s) => s());
+
+export function useWallet(): { address: string | null; available: boolean; connect: () => Promise<void>; disconnect: () => Promise<void> } {
+  const address = useSyncExternalStore(
+    (cb) => {
+      subs.add(cb);
+      return () => subs.delete(cb);
+    },
+    () => connected,
+  );
+  return {
+    address,
+    available: !!provider(),
+    connect: async () => {
+      const p = provider();
+      if (!p) throw new Error('No Solana wallet found. Install Phantom or Solflare.');
+      const res = await p.connect();
+      connected = (res && 'publicKey' in res ? res.publicKey : p.publicKey)?.toBase58() ?? null;
+      p.on?.('accountChanged', (pk: PublicKey | null) => {
+        connected = pk?.toBase58() ?? null;
+        emit();
+      });
+      emit();
+    },
+    disconnect: async () => {
+      await provider()?.disconnect();
+      connected = null;
+      emit();
+    },
+  };
+}
+
+export async function signAndSend(ixs: TransactionInstruction[]): Promise<string> {
+  const p = provider();
+  if (!p || !connected) throw new Error('Connect a wallet first');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  const tx = new Transaction({ feePayer: new PublicKey(connected), blockhash, lastValidBlockHeight }).add(...ixs);
+  const signed = await p.signTransaction(tx);
+  const sig = await connection.sendRawTransaction(signed.serialize());
+  const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+  if (res.value.err) throw new Error(`Transaction failed: ${JSON.stringify(res.value.err)}`);
+  return sig;
+}
+
+// ---- encoding ----
+
+async function disc(name: string): Promise<Uint8Array> {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`global:${name}`));
+  return new Uint8Array(h).slice(0, 8);
+}
+function u64(n: bigint): Uint8Array {
+  const b = new Uint8Array(8);
+  new DataView(b.buffer).setBigUint64(0, n, true);
+  return b;
+}
+function u32(n: number): Uint8Array {
+  const b = new Uint8Array(4);
+  new DataView(b.buffer).setUint32(0, n, true);
+  return b;
+}
+function concat(...parts: Uint8Array[]): Buffer {
+  return Buffer.concat(parts.map((p) => Buffer.from(p)));
+}
+const w = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
+const r = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: false });
+
+// ---- proof_vault ----
+
+export class Vault {
+  readonly programId: PublicKey;
+  readonly mint: PublicKey;
+  readonly config: Config;
+  constructor(config: Config) {
+    this.config = config;
+    this.programId = new PublicKey(config.vaultProgramId);
+    this.mint = new PublicKey(config.mint);
+  }
+
+  configPda(): PublicKey {
+    return PublicKey.findProgramAddressSync([Buffer.from('config')], this.programId)[0];
+  }
+  envelopePda(id: bigint): PublicKey {
+    return PublicKey.findProgramAddressSync([Buffer.from('envelope'), Buffer.from(u64(id))], this.programId)[0];
+  }
+  vaultPda(envelope: PublicKey): PublicKey {
+    return PublicKey.findProgramAddressSync([Buffer.from('vault'), envelope.toBuffer()], this.programId)[0];
+  }
+
+  async tokenProgram(): Promise<PublicKey> {
+    const info = await connection.getAccountInfo(this.mint);
+    if (!info) throw new Error('Mint not found');
+    return info.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+  }
+
+  async seal(holder: string, source: string, ranges: { start: bigint; end: bigint }[]): Promise<string> {
+    if (ranges.length < 1 || ranges.length > 8) throw new Error('An envelope holds 1 to 8 ranges');
+    const info = await connection.getAccountInfo(this.configPda());
+    if (!info) throw new Error('Vault program is not initialized');
+    const id = info.data.readBigUInt64LE(8);
+    const envelope = this.envelopePda(id);
+    const tokenProgram = await this.tokenProgram();
+    const sorted = [...ranges].sort((a, b) => (a.start < b.start ? -1 : 1));
+    const data = concat(await disc('seal'), u32(sorted.length), ...sorted.flatMap((x) => [u64(x.start), u64(x.end - x.start)]));
+    return signAndSend([new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        w(new PublicKey(holder), true), w(this.configPda()), w(envelope), w(this.vaultPda(envelope)),
+        w(new PublicKey(source)), r(this.mint), r(tokenProgram), r(SystemProgram.programId),
+      ],
+      data,
+    })]);
+  }
+
+  async list(holder: string, envelope: string, lamports: bigint): Promise<string> {
+    return signAndSend([new TransactionInstruction({
+      programId: this.programId, keys: [r(new PublicKey(holder), true), w(new PublicKey(envelope))], data: concat(await disc('list'), u64(lamports)),
+    })]);
+  }
+
+  async cancel(holder: string, envelope: string): Promise<string> {
+    return signAndSend([new TransactionInstruction({
+      programId: this.programId, keys: [r(new PublicKey(holder), true), w(new PublicKey(envelope))], data: concat(await disc('cancel')),
+    })]);
+  }
+
+  async gift(holder: string, envelope: string, to: string): Promise<string> {
+    const recipient = new PublicKey(to);
+    return signAndSend([new TransactionInstruction({
+      programId: this.programId, keys: [r(new PublicKey(holder), true), w(new PublicKey(envelope))], data: concat(await disc('gift'), recipient.toBytes()),
+    })]);
+  }
+
+  async buy(buyer: string, holder: string, envelope: string, maxLamports: bigint): Promise<string> {
+    return signAndSend([new TransactionInstruction({
+      programId: this.programId,
+      keys: [w(new PublicKey(buyer), true), w(new PublicKey(holder)), w(new PublicKey(envelope)), r(SystemProgram.programId)],
+      data: concat(await disc('buy'), u64(maxLamports)),
+    })]);
+  }
+
+  // Sends everything to the holder's associated token account (created if needed). Melts.
+  async withdraw(holder: string, envelope: string, vault: string): Promise<string> {
+    const owner = new PublicKey(holder);
+    const tokenProgram = await this.tokenProgram();
+    const destination = getAssociatedTokenAddressSync(this.mint, owner, false, tokenProgram);
+    return signAndSend([
+      createAssociatedTokenAccountIdempotentInstruction(owner, destination, owner, this.mint, tokenProgram),
+      new TransactionInstruction({
+        programId: this.programId,
+        keys: [w(owner, true), w(new PublicKey(envelope)), w(new PublicKey(vault)), w(destination), r(this.mint), r(tokenProgram)],
+        data: concat(await disc('withdraw')),
+      }),
+    ]);
+  }
+
+  // ---- buyer checks (SPEC §9.1), run against the chain from the browser ----
+
+  async checkEnvelope(address: string, expect: { holder: string; price: string; ranges: { start: string; end: string }[] }): Promise<Check[]> {
+    const checks: Check[] = [];
+    const add = (label: string, ok: boolean, detail = '') => checks.push({ label, ok, detail });
+    const envKey = new PublicKey(address);
+    const envInfo = await connection.getAccountInfo(envKey);
+    if (!envInfo) {
+      add('Envelope exists on-chain', false, 'Not found — it may have been withdrawn');
+      return checks;
+    }
+    add('Envelope belongs to the $PROOF vault program', envInfo.owner.equals(this.programId), envInfo.owner.toBase58());
+    const env = decodeEnvelope(envInfo.data);
+    add('Envelope address is the program\'s own (no private key exists)', this.envelopePda(env.id).equals(envKey), `id ${env.id}`);
+    const vaultKey = this.vaultPda(envKey);
+    add('Vault is the envelope\'s program-owned token account', vaultKey.equals(env.vault));
+    add('Listed for sale', env.status === 'listed', env.status);
+    add('Price matches the listing', env.price.toString() === expect.price, `${env.price} lamports`);
+    add('Seller matches the listing', env.holder.toBase58() === expect.holder);
+
+    const vaultInfo = await connection.getAccountInfo(vaultKey);
+    if (!vaultInfo) {
+      add('Vault token account exists', false);
+      return checks;
+    }
+    const genuine = vaultInfo.owner.equals(TOKEN_PROGRAM_ID) || vaultInfo.owner.equals(TOKEN_2022_PROGRAM_ID);
+    add('Held by the genuine Solana token program', genuine, vaultInfo.owner.toBase58());
+    if (!genuine) return checks;
+    const acct = unpackAccount(vaultKey, vaultInfo, vaultInfo.owner);
+    add('Token is the official $PROOF mint', acct.mint.equals(this.mint), acct.mint.toBase58());
+    add('Only the envelope controls the vault', acct.owner.equals(envKey));
+    add('No delegate can move the tokens', acct.delegate === null);
+    add('No close authority', acct.closeAuthority === null);
+    add('Not frozen', !acct.isFrozen);
+    add('Vault balance covers the sealed amount', acct.amount >= env.amount, `${acct.amount} ≥ ${env.amount}`);
+    // The ledger merges touching ranges; merge the declared ones the same way before comparing.
+    const merged: { start: bigint; end: bigint }[] = [];
+    for (const x of env.ranges) {
+      const last = merged[merged.length - 1];
+      if (last && last.end === x.start) last.end = x.start + x.len;
+      else merged.push({ start: x.start, end: x.start + x.len });
+    }
+    const declared = merged.map((x) => `${x.start}-${x.end}`).join(',');
+    const ledger = expect.ranges.map((x) => `${x.start}-${x.end}`).join(',');
+    add('Ledger confirms the seller really held these tokens', declared === ledger,
+      declared === ledger ? 'Sealed ranges are intact' : 'Invalid seal — the contents are ordinary $PROOF');
+    return checks;
+  }
+}
+
+export type Check = { label: string; ok: boolean; detail: string };
+
+type DecodedEnvelope = {
+  id: bigint; holder: PublicKey; vault: PublicKey; amount: bigint; status: 'sealed' | 'listed'; price: bigint;
+  ranges: { start: bigint; len: bigint }[];
+};
+
+// Layout of proof_vault::Envelope (after the 8-byte Anchor discriminator).
+export function decodeEnvelope(data: Uint8Array): DecodedEnvelope {
+  const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let o = 8;
+  const id = v.getBigUint64(o, true); o += 8;
+  const holder = new PublicKey(data.slice(o, o + 32)); o += 32;
+  const vault = new PublicKey(data.slice(o, o + 32)); o += 32;
+  const amount = v.getBigUint64(o, true); o += 8;
+  const status = data[o] === 1 ? 'listed' : 'sealed'; o += 1;
+  const price = v.getBigUint64(o, true); o += 8;
+  const n = v.getUint32(o, true); o += 4;
+  const ranges = [];
+  for (let i = 0; i < n; i++) {
+    ranges.push({ start: v.getBigUint64(o, true), len: v.getBigUint64(o + 8, true) });
+    o += 16;
+  }
+  return { id, holder, vault, amount, status, price, ranges };
+}
+
+export function isAddress(s: string): boolean {
+  try {
+    new PublicKey(s);
+    return s.length >= 32;
+  } catch {
+    return false;
+  }
+}

@@ -60,7 +60,32 @@ const follower = new Follower(
   { ...config },
   syncedSlot,
 );
-const { server, broadcast } = createApi({ ledger, syncedSlot: () => follower.syncedSlot });
+// History for activity feeds and strike pages, rebuilt from the append-only change log.
+const changesPath = join(config.dataDir, 'changes.jsonl');
+const history: TxChanges[] = existsSync(changesPath)
+  ? readFileSync(changesPath, 'utf8').split('\n').filter(Boolean).map(reviveChanges)
+  : [];
+
+// The log stores bigints as decimal strings; restore them.
+function reviveChanges(line: string): TxChanges {
+  const tx = JSON.parse(line);
+  for (const ch of tx.changes) {
+    if (ch.ranges) ch.ranges = ch.ranges.map((r: any) => ({ start: BigInt(r.start), end: BigInt(r.end) }));
+    if (ch.price !== undefined) ch.price = BigInt(ch.price);
+  }
+  return tx;
+}
+const { server, broadcast } = createApi({
+  ledger,
+  syncedSlot: () => follower.syncedSlot,
+  history,
+  publicConfig: {
+    mint: config.mint,
+    vaultProgramId: config.vaultProgramId,
+    curveTokenAccount: config.curveTokenAccount,
+    revealAuthority: config.revealAuthority,
+  },
+});
 server.listen(config.port, () => console.log(`api on :${config.port}, synced to slot ${syncedSlot}`));
 
 function saveSnapshot() {
@@ -77,7 +102,7 @@ async function loop() {
       const n = await follower.syncOnce((c) => pending.push(c));
       // Persist changes and the snapshot only after the whole window applied cleanly.
       for (const c of pending) {
-        if (c.changes.length) appendFileSync(join(config.dataDir, 'changes.jsonl'), json(c) + '\n');
+        if (c.changes.length) appendFileSync(changesPath, json(c) + '\n');
       }
       saveSnapshot();
       for (const c of pending) broadcast(c);

@@ -10,6 +10,7 @@ Rules: [SPEC.md](SPEC.md) — the single source of truth.
 | `indexer/src/follower.ts` | Fetches finalized transactions in (slot, block position) order |
 | `indexer/src/reveal.ts` | Commit/reveal hashing and Merkle proofs (SPEC §4) |
 | `indexer/src/api.ts` | Read API + live change stream for the website |
+| `web/` | Website: overview, mint sheet, strike pages with in-browser verification, collector desk, wallet actions |
 
 ## Indexer
 
@@ -34,6 +35,19 @@ Operational behaviour:
   `HALT` message means a ledger inconsistency and needs a human: it will not fix itself.
 - The RPC follower polls `getSignaturesForAddress` per watched account. That is fine at launch
   scale; for production volume, swap in a Geyser/Yellowstone stream feeding the same `Decoder`.
+
+## Website
+
+Vite + React. Talks to the indexer API for rarity data and to Solana RPC (from the browser) for
+transactions and the desk's on-chain buyer checks. Wallets: Phantom, Solflare, Backpack (injected).
+
+```sh
+cd web
+npm install
+cp .env.example .env     # VITE_RPC_URL, VITE_CLUSTER; VITE_API_URL defaults to /api
+npm run dev              # proxies /api to the indexer on :8787 (INDEXER_URL to change)
+npm run build            # static site in web/dist; serve the indexer API at VITE_API_URL
+```
 
 ## Program
 
