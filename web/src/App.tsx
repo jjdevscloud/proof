@@ -113,9 +113,9 @@ function Header({ route }: { route: string }) {
         </nav>
         <div className="wallet-btn">
           {wallet.address ? (
-            <button className="btn btn-ghost" onClick={() => wallet.disconnect()} title="Disconnect">
-              <span className="dot" /> {short(wallet.address)}
-            </button>
+            <WalletMenu address={wallet.address} onDisconnect={() => wallet.disconnect()} />
+          ) : wallet.restoring ? (
+            <button className="btn btn-ghost" disabled>Reconnecting…</button>
           ) : (
             <button
               className="btn btn-primary"
@@ -132,6 +132,48 @@ function Header({ route }: { route: string }) {
         </div>
       )}
     </header>
+  );
+}
+
+// Clicking the address opens a menu; disconnecting is a deliberate second click.
+function WalletMenu({ address, onDisconnect }: { address: string; onDisconnect: () => void }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as Element).closest?.('.wallet-menu')) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return (
+    <div className="wallet-menu">
+      <button className="btn btn-ghost" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
+        <span className="dot" /> {short(address)} <span aria-hidden className="caret">▾</span>
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          <a role="menuitem" href="#/wallet" onClick={() => setOpen(false)}>My wallet</a>
+          <button
+            role="menuitem"
+            onClick={() => {
+              navigator.clipboard?.writeText(address);
+              setOpen(false);
+            }}
+          >
+            Copy address
+          </button>
+          <button role="menuitem" className="danger-text" onClick={() => { setOpen(false); onDisconnect(); }}>
+            Disconnect
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

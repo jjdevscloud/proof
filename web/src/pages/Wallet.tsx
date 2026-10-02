@@ -14,6 +14,7 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
   const { data, error } = useApi<WalletView>(valid ? `/wallet/${address}` : null);
   const own = !!address && address === wallet.address;
 
+  if (!address && wallet.restoring) return <Loading what="Reconnecting your wallet" />;
   if (!address) {
     return (
       <div className="panel narrow">

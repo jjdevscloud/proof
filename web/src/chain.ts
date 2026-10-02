@@ -16,7 +16,7 @@ export const connection = new Connection(RPC_URL, 'confirmed');
 
 type Provider = {
   publicKey: PublicKey | null;
-  connect: () => Promise<{ publicKey: PublicKey } | void>;
+  connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: PublicKey } | void>;
   disconnect: () => Promise<void>;
   signTransaction: (tx: Transaction) => Promise<Transaction>;
   on?: (event: string, cb: (...args: any[]) => void) => void;
@@ -27,36 +27,98 @@ function provider(): Provider | null {
   return w.phantom?.solana ?? w.solflare ?? w.backpack ?? w.solana ?? null;
 }
 
+// Remembered across reloads so the site can reconnect silently. Only the user's explicit
+// Disconnect clears it.
+const REMEMBER_KEY = 'proof:wallet-connected';
+function remember(on: boolean) {
+  try {
+    if (on) localStorage.setItem(REMEMBER_KEY, '1');
+    else localStorage.removeItem(REMEMBER_KEY);
+  } catch {}
+}
+function remembered(): boolean {
+  try {
+    return localStorage.getItem(REMEMBER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 let connected: string | null = null;
+let restoring = remembered();
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((s) => s());
+const setConnected = (pk: PublicKey | null | undefined) => {
+  connected = pk?.toBase58() ?? null;
+  emit();
+};
 
-export function useWallet(): { address: string | null; available: boolean; connect: () => Promise<void>; disconnect: () => Promise<void> } {
-  const address = useSyncExternalStore(
+// Wallet events are wired once per provider, not on every connect.
+let wired: Provider | null = null;
+function wire(p: Provider) {
+  if (wired === p) return;
+  wired = p;
+  p.on?.('connect', (pk?: PublicKey) => setConnected(pk ?? p.publicKey));
+  p.on?.('disconnect', () => setConnected(null));
+  p.on?.('accountChanged', (pk: PublicKey | null) => {
+    if (pk) return setConnected(pk);
+    // Phantom reports null when it locks or switches to an account this site hasn't seen yet.
+    // Try a silent reconnect before treating it as disconnected.
+    p.connect({ onlyIfTrusted: true }).then((r) => setConnected(r?.publicKey ?? p.publicKey)).catch(() => setConnected(null));
+  });
+}
+
+// Silent reconnect on page load: never opens a popup, only succeeds if the user approved this site before.
+async function restore() {
+  if (!restoring) return;
+  // Extensions can inject their provider shortly after the page starts.
+  for (let i = 0; i < 20 && !provider(); i++) await new Promise((r) => setTimeout(r, 100));
+  const p = provider();
+  if (p) {
+    wire(p);
+    try {
+      const res = await p.connect({ onlyIfTrusted: true });
+      setConnected(res?.publicKey ?? p.publicKey);
+    } catch {
+      // Not trusted any more (revoked in the wallet): stay disconnected until the user clicks Connect.
+    }
+  }
+  restoring = false;
+  emit();
+}
+if (typeof window !== 'undefined') restore();
+
+export function useWallet(): {
+  address: string | null;
+  restoring: boolean;
+  available: boolean;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+} {
+  const snapshot = useSyncExternalStore(
     (cb) => {
       subs.add(cb);
       return () => subs.delete(cb);
     },
-    () => connected,
+    () => `${connected ?? ''}|${restoring}`,
   );
+  const [address, isRestoring] = snapshot.split('|');
   return {
-    address,
+    address: address || null,
+    restoring: isRestoring === 'true',
     available: !!provider(),
     connect: async () => {
       const p = provider();
       if (!p) throw new Error('No Solana wallet found. Install Phantom or Solflare.');
+      wire(p);
       const res = await p.connect();
-      connected = (res && 'publicKey' in res ? res.publicKey : p.publicKey)?.toBase58() ?? null;
-      p.on?.('accountChanged', (pk: PublicKey | null) => {
-        connected = pk?.toBase58() ?? null;
-        emit();
-      });
-      emit();
+      setConnected(res?.publicKey ?? p.publicKey);
+      remember(true);
     },
     disconnect: async () => {
+      remember(false);
       await provider()?.disconnect();
-      connected = null;
-      emit();
+      setConnected(null);
     },
   };
 }
