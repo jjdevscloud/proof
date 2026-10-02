@@ -7,10 +7,13 @@
     "setup": "node setup.ts",
     "scenario": "node scenario.ts",
     "verify": "node verify.ts",
-    "attacks": "node attacks.ts"
+    "attacks": "node attacks.ts",
+    "pump-check": "node pump-check.ts",
+    "token2022": "node token2022-local.ts"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",
+    "@solana/spl-token-metadata": "^0.1.6",
     "@solana/web3.js": "^1.99.0"
   }
 }

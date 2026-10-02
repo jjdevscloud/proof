@@ -91,7 +91,7 @@ const indexerConfig = {
   mint: mint.toBase58(),
   curveTokenAccount: curveTokens.toBase58(),
   pumpProgramId: programId('mock_curve').toBase58(),
-  pumpBuyInstructions: ['buy'],
+  pumpNonBuyInstructions: ['migrate'],
   vaultProgramId: programId('proof_vault').toBase58(),
   revealAuthority: reveal.publicKey.toBase58(),
   saleableSupply: SALEABLE.toString(),

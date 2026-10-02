@@ -38,8 +38,11 @@ positions `[7,000,000,000,000, 7,000,001,000,000)`).
 
 ### 3.2 Curve buys
 A **curve buy** is a token transfer out of the bonding-curve token account whose *direct
-parent instruction* is a pump.fun buy instruction (names listed in indexer config; verify at
-launch). For a curve buy of `a` base units:
+parent instruction* is a pump.fun instruction **other than** a listed non-buy instruction
+(`migrate`, `withdraw`). pump.fun adds buy variants over time (`buy`, `buy_exact_sol_in`,
+`buy_v2`, `buy_exact_quote_in_v2` as of 2026-10), so buys are defined by exclusion. Misclassifying
+a migration is harmless: migration happens only once every saleable position is issued, so
+`fresh` below is 0. For a curve buy of `a` base units:
 
 1. First, up to `returned` units are paid out of tokens previously sold back to the curve.
    These are **melted** (common).
@@ -154,7 +157,8 @@ external audit, then set to none (immutable). Announced before launch.
 ## 8. Indexer
 
 ### 8.1 Inputs
-Only finalized transactions, only successful ones (`meta.err == null`). Sources to watch:
+Only finalized transactions, only successful ones (`meta.err == null`), of every transaction
+version (legacy, 0 and 1 are all live on mainnet as of 2026-10). Sources to watch:
 - the bonding-curve token account,
 - the vault program id,
 - every account that currently holds rare ranges (added when it first receives a curve buy).
@@ -167,7 +171,8 @@ account's history before it gained ranges is irrelevant.
    must equal the pre-balance; otherwise start a transient entry with that balance as common.
 2. Walk instructions in execution order (top-level, then inner by stack height). Classify each
    $PROOF token movement using its **direct parent** instruction:
-   - parent is a pump.fun buy and source is the curve account → curve buy
+   - source is the curve account and the parent is a pump.fun instruction not on the non-buy
+     list → curve buy
    - parent is `proof_vault.seal` → seal; parent is `proof_vault.withdraw` → withdraw
    - otherwise → transfer
    Also: burns, `SetAuthority(AccountOwner)`, closes, `proof_vault` list/cancel/buy/gift,
@@ -211,8 +216,12 @@ hook or frozen-by-default state (Token-2022 only).
 > is the only part that depends on collectors.
 
 ## 11. Open items before launch
-- Verify on the live mint: token program, decimals, saleable supply, pump.fun buy instruction
-  names, bonding-curve token account address.
+- Verify on the live mint: decimals, saleable supply, bonding-curve token account address
+  (ATA of the PDA `["bonding-curve", mint]`). Verified 2026-10 on real pump.fun tokens: Token-2022,
+  6 decimals, 1B supply, mint and freeze authority revoked, extensions `metadataPointer` +
+  `tokenMetadata` only (passes §9.2). The vault's full flow is tested against such a mint.
+- Re-run `devnet/pump-check.ts` against mainnet shortly before launch to catch new pump.fun
+  instructions.
 - Set `PROOF_MINT` and the program id in the program; set the indexer config.
 - Legal review of the reveal mechanic in target jurisdictions.
 - Desk fee (none in v1). Splitting envelopes (not in v1: withdraw is all-or-nothing).

@@ -60,7 +60,7 @@ bash scripts/wsl-deploy.sh    # deploy both programs with devnet/keys/payer.json
 
 Set `PROOF_MINT` in `programs/proof-vault/src/lib.rs` to the real mint before a mainnet build.
 
-Before mainnet: a Token-2022 mint test, an external audit, and the upgrade policy in SPEC §7.
+Before mainnet: an external audit and the upgrade policy in SPEC §7.
 
 ## Devnet test run
 
@@ -74,6 +74,9 @@ node setup.ts                                    # fund wallets, reveal file + c
 cd ../indexer && node src/main.ts config.devnet.json      # and config.devnet-b.json in a second terminal
 cd ../devnet && node scenario.ts && node verify.ts         # every SPEC §6 rule, both indexers, fingerprints
 node attacks.ts                                  # 17 misuse/attack cases + happy path, simulated (no state change)
+node pump-check.ts 200                           # decoder vs REAL mainnet pump.fun transactions (read-only)
+# WSL: bash scripts/wsl-localnet.sh, then:
+RPC_URL=http://127.0.0.1:8899 node token2022-local.ts   # vault flow on a pump.fun-style Token-2022 mint
 ```
 
 The website shows a devnet-only "Get test tokens" panel on your own wallet page (mock curve buy).

@@ -20,7 +20,7 @@ type Config = {
   mint: string;
   curveTokenAccount: string;
   pumpProgramId: string;
-  pumpBuyInstructions: string[];
+  pumpNonBuyInstructions: string[];
   vaultProgramId: string;
   revealAuthority: string;
   saleableSupply: string;

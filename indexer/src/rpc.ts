@@ -48,14 +48,14 @@ export class Rpc {
 
   transaction(signature: string): Promise<any> {
     return this.call('getTransaction', [
-      signature, { encoding: 'jsonParsed', commitment: 'finalized', maxSupportedTransactionVersion: 0 },
+      signature, { encoding: 'jsonParsed', commitment: 'finalized', maxSupportedTransactionVersion: 1 },
     ]);
   }
 
   // Signatures of a block in execution order.
   async blockOrder(slot: number): Promise<string[]> {
     const block = await this.call<{ signatures: string[] }>('getBlock', [
-      slot, { transactionDetails: 'signatures', rewards: false, commitment: 'finalized', maxSupportedTransactionVersion: 0 },
+      slot, { transactionDetails: 'signatures', rewards: false, commitment: 'finalized', maxSupportedTransactionVersion: 1 },
     ]);
     return block.signatures;
   }

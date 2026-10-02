@@ -8,7 +8,10 @@ export type DecoderConfig = {
   mint: string;
   curveTokenAccount: string;
   pumpProgramId: string;
-  pumpBuyInstructions: string[]; // Anchor instruction names, e.g. ["buy", "buy_exact_sol_in"]
+  // Anchor names of pump.fun instructions that move tokens out of the curve WITHOUT selling them
+  // (migration). Any other pump.fun instruction moving tokens out of the curve is a buy, so new buy
+  // variants (buy_v2, buy_exact_quote_in_v2, ...) are covered without a config change. SPEC §3.2.
+  pumpNonBuyInstructions: string[];
   vaultProgramId: string;
   revealAuthority: string;
 };
@@ -44,12 +47,12 @@ type VaultIx =
 
 export class Decoder {
   readonly config: DecoderConfig;
-  private pumpBuy: Set<string>;
+  private pumpNonBuy: Set<string>;
   private vaultNames: Map<string, string>;
 
   constructor(config: DecoderConfig) {
     this.config = config;
-    this.pumpBuy = new Set(config.pumpBuyInstructions.map(anchorDiscriminator));
+    this.pumpNonBuy = new Set(config.pumpNonBuyInstructions.map(anchorDiscriminator));
     this.vaultNames = new Map(
       ['initialize', 'seal', 'list', 'cancel', 'buy', 'gift', 'withdraw'].map((n) => [anchorDiscriminator(n), n]),
     );
@@ -99,7 +102,7 @@ export class Decoder {
         const from: string = info.source;
         const to: string = info.destination;
         if (parent && from === this.config.curveTokenAccount && parent.programId === this.config.pumpProgramId
-            && this.pumpBuy.has(discriminatorOf(parent))) {
+            && !this.pumpNonBuy.has(discriminatorOf(parent))) {
           return { kind: 'curveBuy', to, amount };
         }
         if (parent && parent.programId === this.config.vaultProgramId) {

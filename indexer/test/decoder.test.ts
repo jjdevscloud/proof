@@ -12,7 +12,7 @@ const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 
 const decoder = new Decoder({
-  mint: MINT, curveTokenAccount: CURVE, pumpProgramId: PUMP, pumpBuyInstructions: ['buy', 'buy_exact_sol_in'],
+  mint: MINT, curveTokenAccount: CURVE, pumpProgramId: PUMP, pumpNonBuyInstructions: ['migrate', 'withdraw'],
   vaultProgramId: VAULT_PROGRAM, revealAuthority: AUTH,
 });
 
@@ -60,6 +60,19 @@ test('a pump buy routed through another program is a curve buy', () => {
   const d = decoder.decode(t)!;
   assert.deepEqual(d.events, [{ kind: 'curveBuy', to: 'A', amount: 1000n }]);
   assert.deepEqual(d.post[1], { account: 'A', owner: 'user', balance: 1000n });
+});
+
+test('new pump buy variants (buy_v2, buy_exact_quote_in_v2) are curve buys without config changes', () => {
+  for (const name of ['buy_v2', 'buy_exact_quote_in_v2']) {
+    const t = tx({
+      keys: [{ pubkey: 'user', signer: true }, { pubkey: CURVE }, { pubkey: 'A' }],
+      ixs: [{ programId: PUMP, accounts: [], data: ixData(name, u64(5n)), stackHeight: null }],
+      inner: [{ index: 0, instructions: [transfer(CURVE, 'A', 10n, 2)] }],
+      pre: [bal(1, 'bondingCurve', 50n)],
+      post: [bal(1, 'bondingCurve', 40n), bal(2, 'user', 10n)],
+    });
+    assert.deepEqual(decoder.decode(t)!.events, [{ kind: 'curveBuy', to: 'A', amount: 10n }], name);
+  }
 });
 
 test('a transfer out of the curve under a non-buy pump instruction is a plain transfer', () => {
