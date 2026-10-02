@@ -119,7 +119,8 @@ async function loop() {
       else console.error(`sync error, exiting for restart: ${(e as Error).message}`);
       process.exit(1);
     }
-    await new Promise((r) => setTimeout(r, config.pollMs));
+    // Only pause at the chain tip; while catching up, go straight to the next window.
+    if (follower.syncedSlot >= follower.finalizedSlot) await new Promise((r) => setTimeout(r, config.pollMs));
   }
 }
 loop();

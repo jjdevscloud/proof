@@ -19,6 +19,7 @@ type Queued = { signature: string; slot: number };
 
 export class Follower {
   syncedSlot: number;
+  finalizedSlot = 0; // chain tip seen by the last sync; syncedSlot < finalizedSlot means catching up
   private ledger: Ledger;
   private decoder: Decoder;
   private rpc: Rpc;
@@ -40,6 +41,7 @@ export class Follower {
   // Processes one window up to the finalized slot. Returns the number of transactions applied.
   async syncOnce(onChanges: (c: TxChanges) => void): Promise<number> {
     const finalized = await this.rpc.finalizedSlot();
+    this.finalizedSlot = finalized;
     const from = this.syncedSlot + 1;
     const to = Math.min(finalized, from + this.config.maxWindowSlots - 1);
     if (to < from) return 0;

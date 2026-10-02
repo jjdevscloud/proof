@@ -3,7 +3,7 @@
   "dataDir": "./data",
   "port": 8787,
   "pollMs": 2000,
-  "maxWindowSlots": 500,
+  "maxWindowSlots": 20000,
   "startSlot": 0,
   "fingerprintEverySlots": 9000,
   "mint": "SET_ME",
