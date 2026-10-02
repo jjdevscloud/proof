@@ -299,7 +299,7 @@ export class Vault {
       add('Envelope exists on-chain', false, 'Not found — it may have been withdrawn');
       return checks;
     }
-    add('Envelope belongs to the $PROOF vault program', envInfo.owner.equals(this.programId), envInfo.owner.toBase58());
+    add('Envelope belongs to the Sequents vault program', envInfo.owner.equals(this.programId), envInfo.owner.toBase58());
     const env = decodeEnvelope(envInfo.data);
     add('Envelope address is the program\'s own (no private key exists)', this.envelopePda(env.id).equals(envKey), `id ${env.id}`);
     const vaultKey = this.vaultPda(envKey);

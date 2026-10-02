@@ -102,8 +102,8 @@ function Header({ route }: { route: string }) {
     <header className="site-header">
       <div className="container header-inner">
         <a className="brand" href="#/">
-          <span className="brand-mark" aria-hidden>P</span>
-          <span><strong>$PROOF</strong> <span className="brand-sub">Rarity</span></span>
+          <span className="brand-mark" aria-hidden>S</span>
+          <span><strong>Sequents</strong> <span className="brand-sub">$PROOF</span></span>
         </a>
         <button className="icon-btn nav-toggle" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>☰</button>
         <nav className={open ? 'nav open' : 'nav'} onClick={() => setOpen(false)}>
@@ -192,7 +192,7 @@ function Footer() {
             'Ledger status unavailable'
           )}
         </span>
-        <span>Rarity is defined by the $PROOF rules, not by the token. <a href="#/rules">How it works</a></span>
+        <span>Rarity is defined by the Sequents rules, not by the token. <a href="#/rules">How it works</a></span>
       </div>
     </footer>
   );

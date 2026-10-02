@@ -14,7 +14,7 @@ export function Overview() {
   return (
     <>
       <section className="hero">
-        <p className="eyebrow">The $PROOF collector ledger</p>
+        <p className="eyebrow">Sequents · the $PROOF collector ledger</p>
         <h1>Every token costs the same.<br />Some of them are rare.</h1>
         <p className="lede">
           Rarity survives only in the wallet that bought it off the curve — or sealed in an envelope.

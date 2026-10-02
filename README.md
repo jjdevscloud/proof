@@ -1,4 +1,6 @@
-# $PROOF rarity
+# Sequents
+
+The collector ledger for the $PROOF token: rare token ranges, sealed envelopes and a collector desk.
 
 Rules: [SPEC.md](SPEC.md) — the single source of truth.
 

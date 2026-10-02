@@ -1,4 +1,4 @@
-# $PROOF Rarity — v1 Specification
+# Sequents — $PROOF Rarity Specification v1
 
 Status: draft for launch. This file is the single source of truth. Anything not written
 here is not a rule. Rules are frozen once the commit memo (§4) is posted.
@@ -209,7 +209,7 @@ Mint authority: none · Freeze authority: none · No permanent delegate, transfe
 hook or frozen-by-default state (Token-2022 only).
 
 ## 10. Public wording
-> Every $PROOF token trades at the same price on Jupiter. Rarity is defined by the $PROOF
+> Every $PROOF token trades at the same price on Jupiter. Rarity is defined by the Sequents
 > rules: it survives only in the account that bought it off the curve, or sealed in a vault
 > envelope. Anything that leaves either place melts into ordinary $PROOF — forever.
 > A rare lot can always be withdrawn and sold as ordinary $PROOF at market price; the premium

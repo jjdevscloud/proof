@@ -5,11 +5,11 @@ export function Rules() {
   const config = useConfig();
   return (
     <article className="prose">
-      <p className="eyebrow">How $PROOF rarity works</p>
+      <p className="eyebrow">How Sequents works</p>
       <h1>Same coin. Two markets.</h1>
       <p className="lede">
         A 1964 silver quarter spends as 25 cents at a shop, but a coin dealer pays far more for it — because collectors care
-        <em> which</em> quarter it is. $PROOF works the same way. Jupiter is the shop. The collector desk is the dealer.
+        <em> which</em> quarter it is. Sequents brings that to $PROOF. Jupiter is the shop. The collector desk is the dealer.
       </p>
 
       <h2>1. Every token has a number</h2>
@@ -22,7 +22,7 @@ export function Rules() {
       <h2>2. Rarity lives in two places only</h2>
       <ul>
         <li><strong>The account that bought it off the curve.</strong> Your original purchase keeps its numbers.</li>
-        <li><strong>A sealed envelope.</strong> A vault account controlled by the $PROOF program, holding exactly the tokens you sealed.</li>
+        <li><strong>A sealed envelope.</strong> A vault account controlled by the Sequents program, holding exactly the tokens you sealed.</li>
       </ul>
 
       <h2>3. Anything that leaves, melts</h2>
@@ -51,13 +51,13 @@ export function Rules() {
       <h2>What you can check yourself</h2>
       <ul>
         <li>The $PROOF mint: <Addr value={config.mint} /></li>
-        <li>The vault program: <Addr value={config.vaultProgramId} /></li>
+        <li>The Sequents vault program: <Addr value={config.vaultProgramId} /></li>
         <li>The trait commitment, posted by <Addr value={config.revealAuthority} /> before the first buy</li>
         <li>Every desk listing runs on-chain safety checks in your browser before you can buy</li>
         <li>Two independent indexers publish matching ledger fingerprints (shown in the footer)</li>
       </ul>
       <p className="muted small">
-        The blockchain sees every $PROOF token as identical. Rarity is defined by the published $PROOF rules and computed by our
+        The blockchain sees every $PROOF token as identical. Rarity is defined by the published Sequents rules and computed by our
         open-source indexer — anyone can replay the chain and get the same result.
       </p>
     </article>
