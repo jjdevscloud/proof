@@ -3,7 +3,7 @@ import { api, useApi } from '../api.ts';
 import type { Envelope, Preview, Segment, WalletView } from '../api.ts';
 import { useVault } from '../App.tsx';
 import { isAddress, useWallet } from '../chain.ts';
-import { BASE, fmtTokens, lamportsFromSol, short, sol } from '../format.ts';
+import { BASE, CLUSTER, fmtTokens, lamportsFromSol, short, sol } from '../format.ts';
 import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCoin, Traits, TypedConfirm, runTx } from '../components/ui.tsx';
 
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
@@ -41,6 +41,7 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
           <p className="mono small muted"><Addr value={address} /> {own && <span className="pill">connected</span>}</p>
         </div>
       </div>
+      {own && CLUSTER === 'devnet' && <DevnetTokens address={address} />}
       {error && <ErrorNote error={error} />}
       {!data && !error && <Loading />}
       {data && (
@@ -278,5 +279,33 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
         </Modal>
       )}
     </article>
+  );
+}
+
+// DEVNET ONLY: lets testers get rare positions straight off the mock curve.
+function DevnetTokens({ address }: { address: string }) {
+  const vault = useVault();
+  const [busy, setBusy] = useState(false);
+  const buy = async (n: bigint) => {
+    setBusy(true);
+    await runTx(`Get ${n.toLocaleString()} test tokens`, () => vault.devnetCurveBuy(address, n));
+    setBusy(false);
+  };
+  return (
+    <section className="panel devnet">
+      <div className="panel-head">
+        <h2>Devnet testing</h2>
+        <span className="pill">devnet only</span>
+      </div>
+      <p className="small muted">
+        Buy free test $PROOF straight off the test curve. They arrive as fresh, numbered tokens in your main token account,
+        so they keep their rarity. They show up below about 30 seconds after the block is finalized. You need a little devnet SOL
+        for fees (faucet.solana.com).
+      </p>
+      <div className="hero-actions">
+        <button className="btn btn-primary" disabled={busy} onClick={() => buy(1_000_000n)}>Get 1,000,000 (one Strike)</button>
+        <button className="btn btn-ghost" disabled={busy} onClick={() => buy(2_500_000n)}>Get 2,500,000</button>
+      </div>
+    </section>
   );
 }

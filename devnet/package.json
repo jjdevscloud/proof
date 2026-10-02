@@ -6,7 +6,8 @@
     "keys": "node keys.ts",
     "setup": "node setup.ts",
     "scenario": "node scenario.ts",
-    "verify": "node verify.ts"
+    "verify": "node verify.ts",
+    "attacks": "node attacks.ts"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",

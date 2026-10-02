@@ -12,7 +12,7 @@ test('wallet, envelope, preview and strike endpoints', async () => {
   const { server } = createApi({
     ledger: c.ledger,
     syncedSlot: () => 99,
-    publicConfig: { mint: 'M', vaultProgramId: 'V', curveTokenAccount: 'C', revealAuthority: 'R' },
+    publicConfig: { mint: 'M', vaultProgramId: 'V', curveTokenAccount: 'C', curveProgramId: 'P', revealAuthority: 'R' },
   });
   await new Promise<void>((res) => server.listen(0, res));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

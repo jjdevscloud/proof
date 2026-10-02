@@ -310,3 +310,4 @@ input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent);
   .stats-row { grid-template-columns: 1fr; }
   .brand-sub { display: none; }
 }
+.devnet { border-style: dashed; }

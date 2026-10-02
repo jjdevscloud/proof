@@ -83,6 +83,7 @@ const { server, broadcast } = createApi({
     mint: config.mint,
     vaultProgramId: config.vaultProgramId,
     curveTokenAccount: config.curveTokenAccount,
+    curveProgramId: config.pumpProgramId,
     revealAuthority: config.revealAuthority,
   },
 });

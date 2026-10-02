@@ -51,17 +51,16 @@ npm run build            # static site in web/dist; serve the indexer API at VIT
 
 ## Program
 
-Not yet compiled — this machine has no Rust/Solana/Anchor toolchain. To build:
+Built in WSL Ubuntu (`scripts/wsl-setup.sh` installs Rust, Agave 2.1 and Anchor 0.31.1):
 
 ```sh
-# install: rustup, Solana CLI (agave), anchor 0.31.1 via avm
-anchor keys sync          # sets declare_id! and Anchor.toml to your program key
-# set PROOF_MINT in programs/proof-vault/src/lib.rs
-anchor build && cargo test -p proof-vault
+bash scripts/wsl-build.sh     # anchor keys sync, MSRV-pinned Cargo.lock, anchor build, unit tests
+bash scripts/wsl-deploy.sh    # deploy both programs with devnet/keys/payer.json
 ```
 
-Before mainnet: integration tests on localnet (seal → list → buy → withdraw, wrong mint, wrong
-holder, price change, Token-2022 mint), an external audit, and the upgrade policy in SPEC §7.
+Set `PROOF_MINT` in `programs/proof-vault/src/lib.rs` to the real mint before a mainnet build.
+
+Before mainnet: a Token-2022 mint test, an external audit, and the upgrade policy in SPEC §7.
 
 ## Devnet test run
 
@@ -74,6 +73,9 @@ cd devnet && npm install && node keys.ts        # keypairs; points PROOF_MINT at
 node setup.ts                                    # fund wallets, reveal file + commit, mint, curve, vault config
 cd ../indexer && node src/main.ts config.devnet.json      # and config.devnet-b.json in a second terminal
 cd ../devnet && node scenario.ts && node verify.ts         # every SPEC §6 rule, both indexers, fingerprints
+node attacks.ts                                  # 17 misuse/attack cases + happy path, simulated (no state change)
 ```
+
+The website shows a devnet-only "Get test tokens" panel on your own wallet page (mock curve buy).
 
 `keys.ts` rewrites `PROOF_MINT` to the devnet mint — set the real mint before any mainnet build.

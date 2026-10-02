@@ -1,6 +1,6 @@
 // Wallet connection, proof_vault transactions, and the on-chain buyer checks (SPEC §9.1).
 import {
-  Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction,
+  Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction, TransactionMessage, VersionedTransaction,
 } from '@solana/web3.js';
 import {
   TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction,
@@ -61,6 +61,25 @@ export function useWallet(): { address: string | null; available: boolean; conne
   };
 }
 
+// How a Vault submits instructions: the connected wallet by default, or a simulation in tests.
+export type Sender = (feePayer: string, ixs: TransactionInstruction[]) => Promise<string>;
+
+export const walletSender: Sender = (feePayer, ixs) => {
+  if (feePayer !== connected) throw new Error('Connected wallet does not match this action');
+  return signAndSend(ixs);
+};
+
+// Runs the transaction against current chain state without signatures. Throws on failure.
+export function simulateAs(): Sender {
+  return async (feePayer, ixs) => {
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const msg = new TransactionMessage({ payerKey: new PublicKey(feePayer), recentBlockhash: blockhash, instructions: ixs }).compileToV0Message();
+    const res = await connection.simulateTransaction(new VersionedTransaction(msg), { sigVerify: false, replaceRecentBlockhash: true });
+    if (res.value.err) throw new Error(`simulation failed: ${JSON.stringify(res.value.err)} ${(res.value.logs ?? []).slice(-3).join(' | ')}`);
+    return 'simulated';
+  };
+}
+
 export async function signAndSend(ixs: TransactionInstruction[]): Promise<string> {
   const p = provider();
   if (!p || !connected) throw new Error('Connect a wallet first');
@@ -101,8 +120,10 @@ export class Vault {
   readonly programId: PublicKey;
   readonly mint: PublicKey;
   readonly config: Config;
-  constructor(config: Config) {
+  private send: Sender;
+  constructor(config: Config, send: Sender = walletSender) {
     this.config = config;
+    this.send = send;
     this.programId = new PublicKey(config.vaultProgramId);
     this.mint = new PublicKey(config.mint);
   }
@@ -132,7 +153,7 @@ export class Vault {
     const tokenProgram = await this.tokenProgram();
     const sorted = [...ranges].sort((a, b) => (a.start < b.start ? -1 : 1));
     const data = concat(await disc('seal'), u32(sorted.length), ...sorted.flatMap((x) => [u64(x.start), u64(x.end - x.start)]));
-    return signAndSend([new TransactionInstruction({
+    return this.send(holder, [new TransactionInstruction({
       programId: this.programId,
       keys: [
         w(new PublicKey(holder), true), w(this.configPda()), w(envelope), w(this.vaultPda(envelope)),
@@ -143,26 +164,26 @@ export class Vault {
   }
 
   async list(holder: string, envelope: string, lamports: bigint): Promise<string> {
-    return signAndSend([new TransactionInstruction({
+    return this.send(holder, [new TransactionInstruction({
       programId: this.programId, keys: [r(new PublicKey(holder), true), w(new PublicKey(envelope))], data: concat(await disc('list'), u64(lamports)),
     })]);
   }
 
   async cancel(holder: string, envelope: string): Promise<string> {
-    return signAndSend([new TransactionInstruction({
+    return this.send(holder, [new TransactionInstruction({
       programId: this.programId, keys: [r(new PublicKey(holder), true), w(new PublicKey(envelope))], data: concat(await disc('cancel')),
     })]);
   }
 
   async gift(holder: string, envelope: string, to: string): Promise<string> {
     const recipient = new PublicKey(to);
-    return signAndSend([new TransactionInstruction({
+    return this.send(holder, [new TransactionInstruction({
       programId: this.programId, keys: [r(new PublicKey(holder), true), w(new PublicKey(envelope))], data: concat(await disc('gift'), recipient.toBytes()),
     })]);
   }
 
   async buy(buyer: string, holder: string, envelope: string, maxLamports: bigint): Promise<string> {
-    return signAndSend([new TransactionInstruction({
+    return this.send(buyer, [new TransactionInstruction({
       programId: this.programId,
       keys: [w(new PublicKey(buyer), true), w(new PublicKey(holder)), w(new PublicKey(envelope)), r(SystemProgram.programId)],
       data: concat(await disc('buy'), u64(maxLamports)),
@@ -174,12 +195,33 @@ export class Vault {
     const owner = new PublicKey(holder);
     const tokenProgram = await this.tokenProgram();
     const destination = getAssociatedTokenAddressSync(this.mint, owner, false, tokenProgram);
-    return signAndSend([
+    return this.send(holder, [
       createAssociatedTokenAccountIdempotentInstruction(owner, destination, owner, this.mint, tokenProgram),
       new TransactionInstruction({
         programId: this.programId,
         keys: [w(owner, true), w(new PublicKey(envelope)), w(new PublicKey(vault)), w(destination), r(this.mint), r(tokenProgram)],
         data: concat(await disc('withdraw')),
+      }),
+    ]);
+  }
+
+  // DEVNET ONLY: buy fresh tokens off the mock curve (programs/mock-curve) into the wallet's
+  // associated token account, so testers get rare positions without pump.fun.
+  async devnetCurveBuy(buyer: string, tokens: bigint): Promise<string> {
+    if (import.meta.env.VITE_CLUSTER === 'mainnet-beta') throw new Error('Test tokens are devnet-only');
+    const owner = new PublicKey(buyer);
+    const curveProgram = new PublicKey(this.config.curveProgramId);
+    const curve = PublicKey.findProgramAddressSync([Buffer.from('curve'), this.mint.toBuffer()], curveProgram)[0];
+    const tokenProgram = await this.tokenProgram();
+    const destination = getAssociatedTokenAddressSync(this.mint, owner, false, tokenProgram);
+    return this.send(buyer, [
+      createAssociatedTokenAccountIdempotentInstruction(owner, destination, owner, this.mint, tokenProgram),
+      new TransactionInstruction({
+        programId: curveProgram,
+        keys: [
+          r(owner, true), r(this.mint), r(curve), w(new PublicKey(this.config.curveTokenAccount)), w(destination), r(tokenProgram),
+        ],
+        data: concat(await disc('buy'), u64(tokens * 1_000_000n), u64(0n)),
       }),
     ]);
   }

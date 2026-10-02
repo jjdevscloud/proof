@@ -7,7 +7,13 @@ import * as R from './ranges.ts';
 import type { Range } from './ranges.ts';
 
 // Public, non-secret settings the website needs to build transactions and run checks.
-export type PublicConfig = { mint: string; vaultProgramId: string; curveTokenAccount: string; revealAuthority: string };
+export type PublicConfig = {
+  mint: string;
+  vaultProgramId: string;
+  curveTokenAccount: string;
+  curveProgramId: string; // pump.fun on mainnet; the mock curve on devnet
+  revealAuthority: string;
+};
 
 export type ApiState = {
   ledger: Ledger;

@@ -10,6 +10,7 @@ export type Config = {
   mint: string;
   vaultProgramId: string;
   curveTokenAccount: string;
+  curveProgramId: string;
   revealAuthority: string;
   strikeCount: number;
   strikeSize: string;
