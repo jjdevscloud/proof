@@ -159,9 +159,11 @@ test('owner change and burn', () => {
 
 test('commit/reveal memos count only when the reveal authority signs', () => {
   const root = 'ab'.repeat(32);
-  const memo = { program: 'spl-memo', programId: MEMO, parsed: `proof:v1:commit:${root}` };
+  const memo = { program: 'spl-memo', programId: MEMO, parsed: `proof:v1:commit:${root}:123456789` };
   const signed = tx({ keys: [{ pubkey: AUTH, signer: true }], ixs: [memo] });
-  assert.deepEqual(decoder.decode(signed)!.events, [{ kind: 'commit', root }]);
+  assert.deepEqual(decoder.decode(signed)!.events, [{ kind: 'commit', root, deadlineSlot: 123456789 }]);
+  const noDeadline = tx({ keys: [{ pubkey: AUTH, signer: true }], ixs: [{ ...memo, parsed: `proof:v1:commit:${root}` }] });
+  assert.deepEqual(decoder.decode(noDeadline)!.events, [], 'a commit without a deadline is invalid');
   const unsigned = tx({ keys: [{ pubkey: 'someone', signer: true }, { pubkey: AUTH }], ixs: [memo] });
   assert.deepEqual(decoder.decode(unsigned)!.events, []);
 });

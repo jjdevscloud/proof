@@ -63,7 +63,7 @@ export type Change =
   | { kind: 'sale'; envelope: string; from: string; to: string; price: string }
   | { kind: 'gift'; envelope: string; from: string; to: string }
   | { kind: 'withdraw'; envelope: string; to: string }
-  | { kind: 'commit'; root: string }
+  | { kind: 'commit'; root: string; deadlineSlot: number }
   | { kind: 'reveal'; fileHash: string };
 
 export type TxChanges = { slot: number; signature: string; changes: Change[] };
@@ -80,7 +80,20 @@ export type StrikeDetail = {
 };
 
 export type Preview = { fromMelted: string; ranges: RangeJson[]; segments: Segment[] };
-export type Proof = { strike: { strike: number; rank: number; traits: string[]; salt: string }; root: string; proof: string[] };
+export type RevealStatus = {
+  commitRoot: string | null;
+  deadlineSlot: number | null;
+  completionSlot: number | null;
+  seedTargetSlot: number | null;
+  seedFixed: boolean;
+  eligibleStrikes: number | null;
+  revealed: boolean;
+  revealHash: string | null;
+  // present once revealed
+  rules?: string;
+  seedSlot?: number;
+  blockhash?: string;
+};
 
 export async function api<T>(path: string): Promise<T> {
   const res = await fetch(API_URL + path);

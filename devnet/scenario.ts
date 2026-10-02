@@ -1,6 +1,6 @@
 // Step 4: exercise every SPEC §6 rule on devnet. Resumable: finished steps are recorded in state.json.
 // Amounts are in whole tokens; positions in verify.ts follow from these numbers.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import {
@@ -10,7 +10,9 @@ import {
   DECIMALS, REPO, T, buyEnvelopeIx, connection, curveBuyIx, curveSellIx, envelopePdas, giftIx, key, listIx, loadState,
   memoIx, migrateIx, nextEnvelopeId, saveState, sealIx, send, withdrawIx,
 } from './lib.ts';
-import { sha256 } from '../indexer/src/reveal.ts';
+import { INDEXER_URL, RULES_PATH, REVEAL_PATH } from './lib.ts';
+import { parseReveal } from '../indexer/src/reveal.ts';
+import { deriveTraits, parseRules } from '../indexer/src/derive.ts';
 
 const state = loadState();
 state.steps ??= {};
@@ -63,8 +65,30 @@ await step('13 alice seals a range she does not hold', () =>
 
 await step('14 migrate 1,000,000 curve -> pool', () => send([migrateIx(payer.publicKey, mint, P, tokens(1_000_000))], [payer], 'migrate'));
 
-const revealHash = sha256(readFileSync(join(REPO, 'devnet', 'reveal.json'))).toString('hex');
-await step('15 reveal memo', () => send([memoIx(`proof:v1:reveal:${revealHash}`, key('reveal').publicKey)], [key('reveal')], 'reveal memo'));
+// Reveal: wait until the indexer has passed the seed point, then derive the traits from the first
+// block at or after it (what ops/make-reveal.ts does on mainnet) and post the reveal memo.
+await step('15 reveal from the public seed block', async () => {
+  let status: any;
+  for (let i = 0; ; i++) {
+    status = await (await fetch(`${INDEXER_URL}/reveal`)).json();
+    if (status.seedFixed) break;
+    if (i % 10 === 0) console.log(`  waiting for the seed point (slot ${status.seedTargetSlot}) ...`);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  const rulesText = readFileSync(RULES_PATH, 'utf8');
+  const seedSlot = (await connection.getBlocks(status.seedTargetSlot, status.seedTargetSlot + 500, 'finalized'))[0];
+  const block = await connection.getBlock(seedSlot, { transactionDetails: 'none', rewards: false, maxSupportedTransactionVersion: 1, commitment: 'finalized' });
+  const data = {
+    version: 1, rules: rulesText, seedTargetSlot: status.seedTargetSlot, seedSlot, blockhash: block!.blockhash,
+    eligibleStrikes: status.eligibleStrikes, strikes: deriveTraits(parseRules(rulesText), block!.blockhash, status.eligibleStrikes),
+  };
+  const bytes = Buffer.from(JSON.stringify(data));
+  const { fileHash } = parseReveal(bytes);
+  writeFileSync(REVEAL_PATH, bytes);
+  console.log(`  seed block ${seedSlot}; ${status.eligibleStrikes} eligible Strikes; reveal file written`);
+  await new Promise((r) => setTimeout(r, 8000)); // let the indexer pick up the file before the memo lands
+  return send([memoIx(`proof:v1:reveal:${fileHash}`, key('reveal').publicKey)], [key('reveal')], 'reveal memo');
+});
 
 await step('16 alice sends 600,000 to pool after reveal', () => sendTokens(alice, A, P, 600_000));
 

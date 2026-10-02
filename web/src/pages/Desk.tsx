@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { api, useApi } from '../api.ts';
-import type { Envelope, Proof } from '../api.ts';
+import type { Envelope } from '../api.ts';
 import { useConfig, useVault } from '../App.tsx';
 import type { Check } from '../chain.ts';
 import { useWallet } from '../chain.ts';
 import { fmtTokens, short, sol } from '../format.ts';
-import { verifyStrike } from '../verify.ts';
+import { matches, verifyReveal } from '../verify.ts';
 import { Addr, ErrorNote, Loading, Modal, SegmentList, runTx } from '../components/ui.tsx';
 
 export function Desk() {
@@ -66,11 +66,11 @@ function BuyModal({ envelope, onClose }: { envelope: Envelope; onClose: () => vo
     setErr(null);
     try {
       const list = await vault.checkEnvelope(envelope.address, { holder: envelope.holder, price: envelope.price, ranges: envelope.ranges });
-      if (config.revealed) {
-        for (const strike of new Set(envelope.segments.map((s) => s.strike))) {
-          const proof = await api<Proof>(`/proof/${strike}`);
-          const res = await verifyStrike(proof);
-          list.push({ label: `Strike #${strike} traits match the pre-launch commitment`, ok: res.ok && proof.root === config.commitRoot, detail: proof.strike.traits.join(', ') });
+      const v = await verifyReveal(config);
+      if (v.traits) {
+        list.push({ label: 'Reveal verified against the commitment and the seed block', ok: v.ok, detail: '' });
+        for (const seg of envelope.segments) {
+          list.push({ label: `Strike #${seg.strike} is ${seg.traits?.join(' · ')}`, ok: matches(v, seg.strike, seg.traits), detail: 'recomputed in your browser' });
         }
       }
       setChecks(list);

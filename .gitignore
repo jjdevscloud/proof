@@ -8,3 +8,6 @@ devnet/state.json
 indexer/config.devnet*.json
 indexer/data*/
 indexer/*.log
+devnet/state.*.json
+devnet/rules.localnet.json
+devnet/reveal.localnet.json

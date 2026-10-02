@@ -11,8 +11,13 @@ import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 export const ROOT = dirname(fileURLToPath(import.meta.url));
 export const REPO = join(ROOT, '..');
 export const KEYS = join(ROOT, 'keys');
-export const STATE = join(ROOT, 'state.json');
 export const RPC_URL = process.env.RPC_URL ?? 'https://api.devnet.solana.com';
+// Each cluster keeps its own run state, rules and reveal files.
+export const CLUSTER = process.env.CLUSTER ?? (/127.0.0.1|localhost/.test(RPC_URL) ? 'localnet' : 'devnet');
+export const STATE = join(ROOT, CLUSTER === 'devnet' ? 'state.json' : `state.${CLUSTER}.json`);
+export const RULES_PATH = join(ROOT, `rules.${CLUSTER}.json`);
+export const REVEAL_PATH = join(ROOT, `reveal.${CLUSTER}.json`);
+export const INDEXER_URL = process.env.INDEXER_URL ?? 'http://localhost:8787';
 export const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 export const DECIMALS = 6;
 export const T = 1_000_000n; // base units per token

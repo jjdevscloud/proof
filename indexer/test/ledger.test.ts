@@ -1,25 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Chain, CURVE, STRIKE, T, ledgerBalance, newLedger, r } from './helpers.ts';
-import { Ledger, LedgerError } from '../src/ledger.ts';
-import { leafHash, merkleRoot } from '../src/reveal.ts';
+import { Ledger, LedgerError, SEED_DELAY_SLOTS } from '../src/ledger.ts';
+import { sha256 } from '../src/reveal.ts';
 import type { RevealData } from '../src/reveal.ts';
+import { deriveTraits, parseRules } from '../src/derive.ts';
 
-function revealWith(ranks: Record<number, number>): RevealData {
-  return {
-    version: 1,
-    strikes: Array.from({ length: 794 }, (_, i) => ({
-      strike: i, rank: ranks[i] ?? 0, traits: ranks[i] ? ['Double Die'] : ['Common Date'], salt: i.toString(16).padStart(64, '0'),
-    })),
-  };
+const BH = '4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM'; // any base58 blockhash
+const H = 'f'.repeat(64);
+
+// Rules for tests: Strike 0 is "Genesis" (40 points), no random errors unless patched.
+function rulesText(patch: object = {}) {
+  return JSON.stringify({
+    version: 1, project: 'Test', token: 'T', strikeSize: STRIKE.toString(), strikeCount: 794, deadlineSlot: 5,
+    dates: [{ name: 'Genesis', from: 0, to: 0, points: 40 }], defaultDate: { name: 'Common Date', points: 0 }, errors: [], ...patch,
+  });
+}
+const rootOf = (text: string) => sha256(text).toString('hex');
+function revealFile(text: string, eligible: number, seedTargetSlot = 5, blockhash = BH): RevealData {
+  return { version: 1, rules: text, seedTargetSlot, seedSlot: seedTargetSlot, blockhash, eligibleStrikes: eligible, strikes: deriveTraits(parseRules(text), blockhash, eligible) };
 }
 
-function revealed(c: Chain, ranks: Record<number, number>) {
-  const data = revealWith(ranks);
-  const root = merkleRoot(data.strikes.map(leafHash)).toString('hex');
-  c.ledger.registerReveal(data, 'f'.repeat(64));
-  return { data, root };
-}
 
 test('curve buys issue fresh positions in order', () => {
   const c = new Chain();
@@ -64,34 +65,88 @@ test('outflow before reveal: common first, then highest positions', () => {
 
 test('outflow after reveal: least rare strike first, rare strike protected', () => {
   const c = new Chain();
-  const { root } = revealed(c, { 0: 5 });
-  c.tx([{ kind: 'commit', root }]);
-  c.tx([{ kind: 'curveBuy', to: 'A', amount: 2n * STRIKE }]); // strikes 0 and 1
-  c.tx([{ kind: 'reveal', fileHash: 'f'.repeat(64) }]);
+  const text = rulesText();
+  c.tx([{ kind: 'commit', root: rootOf(text), deadlineSlot: 5 }]); // slot 1
+  c.tx([{ kind: 'curveBuy', to: 'A', amount: 2n * STRIKE }]); // slot 2: strikes 0 and 1
+  c.slot = 6; // past the deadline: the seed point is fixed by the next transaction
+  c.ledger.registerReveal(revealFile(text, 2), H);
+  c.tx([{ kind: 'reveal', fileHash: H }]);
+  assert.equal(c.ledger.rank(0), 40);
   const ch = c.tx([{ kind: 'transfer', from: 'A', to: 'POOL', amount: STRIKE + 1n }]);
-  // All of strike 1 (rank 0) leaves first, then the top position of strike 0.
+  // All of strike 1 (Common) leaves first, then the top position of strike 0 (Genesis).
   assert.deepEqual(ch.changes, [{ kind: 'melt', account: 'A', ranges: [r(STRIKE - 1n, 2n * STRIKE)], reason: 'transfer' }]);
   assert.deepEqual(c.ledger.holdings.get('A')!.ranges, [r(0n, STRIKE - 1n)]);
 });
 
-test('commit after launch is ignored; reveal without commit is ignored', () => {
-  const c = new Chain();
-  c.tx([{ kind: 'curveBuy', to: 'A', amount: 1n }]);
-  c.tx([{ kind: 'commit', root: 'a'.repeat(64) }]);
-  assert.equal(c.ledger.commitRoot, null);
-  c.tx([{ kind: 'reveal', fileHash: 'f'.repeat(64) }]);
-  assert.equal(c.ledger.reveal, null);
+test('commit rules: only before the first buy, deadline must be in the future', () => {
+  const late = new Chain();
+  late.tx([{ kind: 'curveBuy', to: 'A', amount: 1n }]);
+  late.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 99 }]);
+  assert.equal(late.ledger.commitRoot, null);
+  const past = new Chain();
+  past.slot = 10;
+  past.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 9 }]);
+  assert.equal(past.ledger.commitRoot, null);
 });
 
-test('reveal halts when the file is missing or does not match the commit', () => {
+test('the seed point: deadline, or 150 slots after the curve sells out, whichever is first', () => {
   const c = new Chain();
-  c.tx([{ kind: 'commit', root: 'a'.repeat(64) }]);
-  assert.throws(() => c.tx([{ kind: 'reveal', fileHash: 'f'.repeat(64) }]), /not registered/);
-  const c2 = new Chain();
-  revealed(c2, {});
-  c2.tx([{ kind: 'commit', root: 'a'.repeat(64) }]);
-  assert.throws(() => c2.tx([{ kind: 'reveal', fileHash: 'f'.repeat(64) }]), /does not match commit/);
+  c.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 100_000 }]);
+  assert.equal(c.ledger.seedTarget(), 100_000);
+  c.tx([{ kind: 'curveBuy', to: 'A', amount: 3n * STRIKE + 7n }]); // slot 2
+  c.slot = 50;
+  c.tx([{ kind: 'curveBuy', to: 'B', amount: c.ledger.config.saleableSupply - c.ledger.curve.cursor }]); // sells out at slot 50
+  assert.equal(c.ledger.completionSlot, 50);
+  assert.equal(c.ledger.seedTarget(), 50 + SEED_DELAY_SLOTS);
+  c.slot = 50 + SEED_DELAY_SLOTS; // not yet past
+  c.tx([]);
+  assert.equal(c.ledger.seedCursor, null);
+  c.tx([]); // first transaction after the target fixes it
+  assert.equal(c.ledger.seedFixedAt, 50 + SEED_DELAY_SLOTS);
+  assert.equal(c.ledger.eligibleStrikes(), 793, 'only fully sold Strikes (the short last one is not full)');
+
+  const quiet = new Chain(); // no transaction after the target: fixed once the indexer has passed it
+  quiet.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 5 }]);
+  quiet.tx([{ kind: 'curveBuy', to: 'A', amount: 2n * STRIKE }]);
+  quiet.ledger.passedSlot(5);
+  assert.equal(quiet.ledger.seedCursor, null);
+  quiet.ledger.passedSlot(6);
+  assert.equal(quiet.ledger.eligibleStrikes(), 2);
+
+  const d = new Chain(); // deadline first: Strikes sold so far are eligible
+  d.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 5 }]);
+  d.tx([{ kind: 'curveBuy', to: 'A', amount: 3n * STRIKE + 7n }]);
+  d.slot = 9;
+  d.tx([{ kind: 'curveBuy', to: 'B', amount: STRIKE }]); // after the deadline: does not count
+  assert.equal(d.ledger.eligibleStrikes(), 3);
 });
+
+test('reveal is ignored before the seed point and halts on any mismatch', () => {
+  const text = rulesText();
+  const early = new Chain();
+  early.tx([{ kind: 'commit', root: rootOf(text), deadlineSlot: 5 }]);
+  early.ledger.registerReveal(revealFile(text, 0), H);
+  early.tx([{ kind: 'reveal', fileHash: H }]); // slot 2: before the deadline
+  assert.equal(early.ledger.reveal, null);
+
+  const setup = (data?: RevealData, root = rootOf(text)) => {
+    const c = new Chain();
+    c.tx([{ kind: 'commit', root, deadlineSlot: 5 }]);
+    c.tx([{ kind: 'curveBuy', to: 'A', amount: 2n * STRIKE }]);
+    c.slot = 6;
+    if (data) c.ledger.registerReveal(data, H);
+    return () => c.tx([{ kind: 'reveal', fileHash: H }]);
+  };
+  assert.throws(setup(), /not registered/);
+  assert.throws(setup(revealFile(text, 2), 'b'.repeat(64)), /does not match the commitment/);
+  assert.throws(setup(revealFile(text, 5)), /eligible strikes 5, ledger says 2/);
+  assert.throws(setup(revealFile(text, 2, 4)), /seed target slot 4, ledger says 5/);
+  const tampered = revealFile(text, 2);
+  tampered.strikes[1] = { strike: 1, rank: 999, traits: ['Common Date'] };
+  assert.throws(setup(tampered), /do not follow from the seed/);
+  assert.doesNotThrow(setup(revealFile(text, 2)));
+});
+
 
 test('valid seal moves named ranges intact; sale and gift move the holder, not the tokens', () => {
   const c = new Chain();

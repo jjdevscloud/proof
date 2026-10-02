@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { api, useApi } from '../api.ts';
-import type { Proof, StrikeDetail } from '../api.ts';
+import { useApi } from '../api.ts';
+import type { RevealStatus, StrikeDetail } from '../api.ts';
 import { useConfig } from '../App.tsx';
 import { TIER_NAMES, explorer, fmtTokens, pct, tier } from '../format.ts';
-import { verifyStrike } from '../verify.ts';
+import { matches, verifyReveal } from '../verify.ts';
+import type { Verification } from '../verify.ts';
 import { ActivityFeed } from '../components/Activity.tsx';
 import { Addr, Bar, ErrorNote, Loading, StrikeCoin, Traits } from '../components/ui.tsx';
 
@@ -63,7 +64,7 @@ export function StrikePage({ n }: { n: number }) {
             </table>
           )}
         </section>
-        <VerifyPanel n={n} />
+        <VerifyPanel n={n} traits={data.traits} />
       </div>
 
       <section className="panel">
@@ -74,48 +75,74 @@ export function StrikePage({ n }: { n: number }) {
   );
 }
 
-function VerifyPanel({ n }: { n: number }) {
+function VerifyPanel({ n, traits }: { n: number; traits: string[] | null }) {
   const config = useConfig();
-  const [state, setState] = useState<{ status: 'idle' | 'running' | 'ok' | 'fail'; detail?: string; root?: string }>({ status: 'idle' });
+  const { data: reveal } = useApi<RevealStatus>('/reveal');
+  const [state, setState] = useState<{ status: 'idle' | 'running' | 'done' | 'error'; v?: Verification; error?: string }>({ status: 'idle' });
 
   const run = async () => {
     setState({ status: 'running' });
     try {
-      const proof = await api<Proof>(`/proof/${n}`);
-      const res = await verifyStrike(proof);
-      // The root must also be the one committed on-chain before launch, not just the indexer's.
-      const committed = config.commitRoot;
-      const ok = res.ok && committed === proof.root;
-      setState({ status: ok ? 'ok' : 'fail', root: res.computedRoot, detail: ok ? undefined : !res.ok ? 'The proof does not reproduce the root.' : 'Root differs from the on-chain commitment.' });
+      setState({ status: 'done', v: await verifyReveal(config) });
     } catch (e) {
-      setState({ status: 'fail', detail: (e as Error).message });
+      setState({ status: 'error', error: (e as Error).message });
     }
   };
+  const v = state.v;
+  const strikeOk = v ? v.ok && matches(v, n, traits) : false;
 
   return (
     <section className="panel verify">
       <h2>Verify these traits</h2>
       <p className="muted small">
-        Before launch, a fingerprint of every Strike's traits was posted on-chain. Your browser can check this Strike against it —
-        no trust in this website needed.
+        The trait rules were committed on-chain before launch. Which Strikes got the random errors comes from a Solana block
+        produced after the sale, so nobody could know in advance. Your browser can recompute everything itself — no trust in
+        this website needed.
       </p>
-      {!config.revealed ? (
-        <p className="muted">Traits are revealed after launch. Verification opens then.</p>
+      {!reveal?.revealed ? (
+        <SeedStatus reveal={reveal ?? null} />
       ) : (
         <>
           <button className="btn btn-ghost" onClick={run} disabled={state.status === 'running'}>
-            {state.status === 'running' ? 'Checking…' : 'Verify in my browser'}
+            {state.status === 'running' ? 'Checking the chain…' : 'Verify in my browser'}
           </button>
-          {state.status === 'ok' && (
-            <p className="verify-ok">✓ Verified. Strike #{n}'s traits match the commitment posted before launch.</p>
+          {v && (
+            <ul className="checks">
+              {[...v.steps, { label: `Strike #${n} is ${traits?.join(' · ') ?? '—'}`, ok: matches(v, n, traits), detail: '' }].map((s) => (
+                <li key={s.label} className={s.ok ? 'ok' : 'bad'}>
+                  <span aria-hidden>{s.ok ? '✓' : '✗'}</span>
+                  <span>{s.label}{s.detail && <span className="muted small"> · {s.detail}</span>}</span>
+                </li>
+              ))}
+            </ul>
           )}
-          {state.status === 'fail' && <p className="error-note">✗ Verification failed. {state.detail}</p>}
+          {v && (strikeOk
+            ? <p className="verify-ok">✓ Verified. Strike #{n}'s traits follow from the committed rules and the public seed.</p>
+            : <p className="error-note">✗ Verification failed. Do not trust these traits.</p>)}
+          {state.error && <p className="error-note">{state.error}</p>}
         </>
       )}
       <dl className="kv small">
-        <dt>Committed root</dt><dd className="mono">{config.commitRoot ? `${config.commitRoot.slice(0, 20)}…` : '—'}</dd>
+        <dt>Rules commitment</dt><dd className="mono">{config.commitRoot ? `${config.commitRoot.slice(0, 20)}…` : '—'}</dd>
         <dt>Posted by</dt><dd><a className="mono" href={explorer('address', config.revealAuthority)} target="_blank" rel="noreferrer">{config.revealAuthority.slice(0, 8)}… (see its first memo)</a></dd>
       </dl>
     </section>
+  );
+}
+
+export function SeedStatus({ reveal }: { reveal: RevealStatus | null }) {
+  if (!reveal?.commitRoot) return <p className="muted">The trait rules have not been committed yet.</p>;
+  return (
+    <div className="small">
+      <p className="muted">
+        Traits are revealed after the seed block: 150 slots after the curve sells out, or slot{' '}
+        <span className="mono">{reveal.deadlineSlot?.toLocaleString()}</span> at the latest. Until then everyone buys blind.
+      </p>
+      <dl className="kv">
+        <dt>Curve sold out</dt><dd>{reveal.completionSlot ? <span className="mono">slot {reveal.completionSlot.toLocaleString()}</span> : 'not yet'}</dd>
+        <dt>Seed slot</dt><dd className="mono">{reveal.seedTargetSlot?.toLocaleString()}{reveal.seedFixed ? ' (passed)' : ''}</dd>
+        {reveal.eligibleStrikes !== null && <><dt>Eligible Strikes</dt><dd className="mono">{reveal.eligibleStrikes}</dd></>}
+      </dl>
+    </div>
   );
 }

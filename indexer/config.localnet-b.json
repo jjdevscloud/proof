@@ -1,0 +1,20 @@
+{
+  "rpcUrl": "http://127.0.0.1:8899",
+  "dataDir": "./data-localnet-b",
+  "port": 8788,
+  "pollMs": 3000,
+  "maxWindowSlots": 100000,
+  "startSlot": -1,
+  "fingerprintEverySlots": 500,
+  "mint": "3kUPFSPaWRhnJZGceW2bWVgaR8m93NdtuHzyATrXD4j5",
+  "curveTokenAccount": "8rBiYpUdmmd1Lvgod8DbVkURxmtYuf1MJLTQw5GHnbMJ",
+  "pumpProgramId": "4vocGpRYJaXoDKP5KDeUv566kgAzsKSDkvCqj2pVL7M4",
+  "pumpNonBuyInstructions": [
+    "migrate"
+  ],
+  "vaultProgramId": "7wGSg7XW8KGGHF772PUoNnGKAKWSCFuRu3tdsLXEY62D",
+  "revealAuthority": "4GdDdHm85KNbwc6z1LXeLpmATP8CgXvqyGHrAcRqD1Ln",
+  "saleableSupply": "793100000000000",
+  "strikeSize": "1000000000000",
+  "revealFile": "../devnet/reveal.localnet.json"
+}

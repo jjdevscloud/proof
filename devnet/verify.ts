@@ -44,9 +44,9 @@ for (const base of apis) {
   await check('alice: strike 1 [1,000,000 – 1,899,990) remains; invalid envelope E2 holds 10 common', async () => {
     const w = await get(base, `/wallet/${pk('alice')}`);
     assert.deepEqual(w.accounts.map((a: any) => a.account), [state.accounts.A]);
-    // 600k post-reveal outflow: all of strike 2 (rank 2) left before strike 1 (rank 7).
+    // 600k post-reveal outflow: all of strike 2 (Genesis + Die Crack = 3) left before strike 1 (Double Date + Die Crack = 8).
     assert.deepEqual(segs(w.accounts[0].segments), [[1, tok(1_000_000n), tok(1_899_990n)]]);
-    assert.deepEqual(w.accounts[0].segments[0].traits, ['Genesis', 'Double Die']);
+    assert.deepEqual(w.accounts[0].segments[0].traits, ['Double Date', 'Die Crack']);
     assert.deepEqual(w.envelopes.map((e: any) => [e.address, e.segments.length]), [[state.envelopes.E2, 0]]);
     const e2 = await get(base, `/envelope/${state.envelopes.E2}`);
     assert.equal(e2.common, tok(10n));

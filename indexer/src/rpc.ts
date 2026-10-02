@@ -52,6 +52,16 @@ export class Rpc {
     ]);
   }
 
+  // The first produced block at or after `slot` (slots can be skipped), with its hash.
+  async firstBlockFrom(slot: number): Promise<{ slot: number; blockhash: string } | null> {
+    const slots = await this.call<number[]>('getBlocks', [slot, slot + 500, { commitment: 'finalized' }]);
+    if (!slots.length) return null;
+    const block = await this.call<{ blockhash: string }>('getBlock', [
+      slots[0], { transactionDetails: 'none', rewards: false, commitment: 'finalized', maxSupportedTransactionVersion: 1 },
+    ]);
+    return { slot: slots[0], blockhash: block.blockhash };
+  }
+
   // Signatures of a block in execution order.
   async blockOrder(slot: number): Promise<string[]> {
     const block = await this.call<{ signatures: string[] }>('getBlock', [

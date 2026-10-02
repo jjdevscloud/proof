@@ -10,7 +10,10 @@ Rules: [SPEC.md](SPEC.md) — the single source of truth.
 | `indexer/src/ledger.ts` | Deterministic rarity ledger — the rules (SPEC §3–6) |
 | `indexer/src/decoder.ts` | Solana `jsonParsed` transaction → ledger events (SPEC §8.2) |
 | `indexer/src/follower.ts` | Fetches finalized transactions in (slot, block position) order |
-| `indexer/src/reveal.ts` | Commit/reveal hashing and Merkle proofs (SPEC §4) |
+| `indexer/src/derive.ts` | Trait assignment from the public seed — shared by the indexer and the browser (SPEC §4) |
+| `indexer/src/reveal.ts` | Reveal file format and checks |
+| `rules/` | The approved Sequents rarity rules (template; the final file is committed on-chain) |
+| `ops/` | Launch tools: `make-commit.ts` (before the token exists), `make-reveal.ts` (after the seed point) |
 | `indexer/src/api.ts` | Read API + live change stream for the website |
 | `web/` | Website: overview, mint sheet, strike pages with in-browser verification, collector desk, wallet actions |
 
@@ -77,8 +80,9 @@ cd ../indexer && node src/main.ts config.devnet.json      # and config.devnet-b.
 cd ../devnet && node scenario.ts && node verify.ts         # every SPEC §6 rule, both indexers, fingerprints
 node attacks.ts                                  # 17 misuse/attack cases + happy path, simulated (no state change)
 node pump-check.ts 200                           # decoder vs REAL mainnet pump.fun transactions (read-only)
-# WSL: bash scripts/wsl-localnet.sh, then:
-RPC_URL=http://127.0.0.1:8899 node token2022-local.ts   # vault flow on a pump.fun-style Token-2022 mint
+# Full pipeline on a local validator (WSL: bash scripts/wsl-localnet.sh), then with RPC_URL=http://127.0.0.1:8899:
+#   node setup.ts; start indexer with config.localnet.json (+ -b); node scenario.ts; node verify.ts
+#   node token2022-local.ts   # vault flow on a pump.fun-style Token-2022 mint
 ```
 
 The website shows a devnet-only "Get test tokens" panel on your own wallet page (mock curve buy).

@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
+    // The browser-side verifier imports the indexer's derivation module (../indexer/src/derive.ts).
+    fs: { allow: ['..'] },
     proxy: {
       '/api': {
         target: process.env.INDEXER_URL ?? 'http://localhost:8787',

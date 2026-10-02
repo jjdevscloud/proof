@@ -86,6 +86,7 @@ export class Follower {
         }
       }
     }
+    this.ledger.passedSlot(to);
     this.syncedSlot = to;
     this.blockOrders.clear();
     return applied;

@@ -1,8 +1,12 @@
 // Deterministic rarity ledger (SPEC §3, §5, §6). Pure: no I/O.
 import * as R from './ranges.ts';
 import type { Range, Segment } from './ranges.ts';
-import { merkleRoot, leafHash, sha256 } from './reveal.ts';
+import { sha256 } from './reveal.ts';
 import type { RevealData } from './reveal.ts';
+import { deriveTraits, parseRules } from './derive.ts';
+
+// The seed block comes this many slots after the curve sells its last position (SPEC §4.3).
+export const SEED_DELAY_SLOTS = 150;
 
 export type LedgerConfig = {
   curveTokenAccount: string;
@@ -25,7 +29,7 @@ export type Envelope = {
 export type Observation = { account: string; owner: string; balance: bigint };
 
 export type LedgerEvent =
-  | { kind: 'commit'; root: string }
+  | { kind: 'commit'; root: string; deadlineSlot: number }
   | { kind: 'reveal'; fileHash: string }
   | { kind: 'curveBuy'; to: string; amount: bigint }
   | { kind: 'transfer'; from: string; to: string; amount: bigint }
@@ -57,7 +61,7 @@ export type Change =
   | { kind: 'sale'; envelope: string; from: string; to: string; price: bigint }
   | { kind: 'gift'; envelope: string; from: string; to: string }
   | { kind: 'withdraw'; envelope: string; to: string }
-  | { kind: 'commit'; root: string }
+  | { kind: 'commit'; root: string; deadlineSlot: number }
   | { kind: 'reveal'; fileHash: string };
 
 export type TxChanges = { slot: number; signature: string; changes: Change[] };
@@ -73,6 +77,10 @@ export class Ledger {
   curve = { cursor: 0n, returned: 0n };
   launched = false;
   commitRoot: string | null = null;
+  deadlineSlot: number | null = null; // from the commit memo
+  completionSlot: number | null = null; // slot of the curve buy that issued the last position
+  seedFixedAt: number | null = null; // the seed target slot, once passed
+  seedCursor: bigint | null = null; // curve cursor at the seed target slot
   revealHash: string | null = null;
   reveal: RevealData | null = null;
   lastSlot = 0;
@@ -92,6 +100,27 @@ export class Ledger {
     this.registered.set(fileHash, data);
   }
 
+  // min(completion + SEED_DELAY_SLOTS, deadline); null before the commit.
+  seedTarget(): number | null {
+    if (this.deadlineSlot === null) return null;
+    return this.completionSlot === null ? this.deadlineSlot : Math.min(this.completionSlot + SEED_DELAY_SLOTS, this.deadlineSlot);
+  }
+
+  // Strikes fully sold when the seed target slot passed: the only ones that can receive errors.
+  eligibleStrikes(): number | null {
+    return this.seedCursor === null ? null : Number(this.seedCursor / this.config.strikeSize);
+  }
+
+  // Called once every relevant transaction up to and including `slot` has been applied. If the
+  // seed target slot has passed with no later transaction, the cursor cannot have moved since.
+  passedSlot(slot: number): void {
+    const target = this.seedTarget();
+    if (this.seedCursor === null && target !== null && slot > target) {
+      this.seedCursor = this.curve.cursor;
+      this.seedFixedAt = target;
+    }
+  }
+
   rank(strike: number): number {
     return this.reveal ? this.reveal.strikes[strike].rank : 0;
   }
@@ -103,6 +132,14 @@ export class Ledger {
     this.changes = [];
     this.touched = new Set();
     const curve = this.config.curveTokenAccount;
+
+    // Fix the seed point as soon as a transaction lands after the seed target slot: nothing in
+    // between could change the cursor, because nothing happened.
+    const target = this.seedTarget();
+    if (this.seedCursor === null && target !== null && tx.slot > target) {
+      this.seedCursor = this.curve.cursor;
+      this.seedFixedAt = target;
+    }
 
     for (const o of tx.pre) {
       if (o.account === curve) continue;
@@ -143,19 +180,28 @@ export class Ledger {
     const curve = this.config.curveTokenAccount;
     switch (ev.kind) {
       case 'commit':
-        if (!this.launched && this.commitRoot === null) {
+        if (!this.launched && this.commitRoot === null && ev.deadlineSlot > slot) {
           this.commitRoot = ev.root;
-          this.changes.push({ kind: 'commit', root: ev.root });
+          this.deadlineSlot = ev.deadlineSlot;
+          this.changes.push({ kind: 'commit', root: ev.root, deadlineSlot: ev.deadlineSlot });
         }
         return;
 
       case 'reveal': {
-        if (this.commitRoot === null || this.reveal !== null) return;
+        // Only after the seed point is fixed; earlier reveal memos are ignored.
+        if (this.commitRoot === null || this.reveal !== null || this.seedCursor === null) return;
         const data = this.registered.get(ev.fileHash);
         if (!data) throw new LedgerError(`reveal ${ev.fileHash} posted on-chain but file not registered`);
-        const root = merkleRoot(data.strikes.map(leafHash)).toString('hex');
-        if (root !== this.commitRoot) throw new LedgerError(`reveal file root ${root} does not match commit ${this.commitRoot}`);
-        if (data.strikes.length !== this.strikeCount) throw new LedgerError('reveal file has wrong strike count');
+        const fail = (why: string) => {
+          throw new LedgerError(`reveal ${ev.fileHash} rejected: ${why}`);
+        };
+        if (sha256(data.rules).toString('hex') !== this.commitRoot) fail('rules file does not match the commitment');
+        const rules = parseRules(data.rules);
+        if (rules.deadlineSlot !== this.deadlineSlot) fail('deadline differs from the commit memo');
+        if (rules.strikeCount !== this.strikeCount || BigInt(rules.strikeSize) !== this.config.strikeSize) fail('strike size or count differs from the indexer');
+        if (data.seedTargetSlot !== this.seedFixedAt) fail(`seed target slot ${data.seedTargetSlot}, ledger says ${this.seedFixedAt}`);
+        if (data.eligibleStrikes !== this.eligibleStrikes()) fail(`eligible strikes ${data.eligibleStrikes}, ledger says ${this.eligibleStrikes()}`);
+        if (JSON.stringify(data.strikes) !== JSON.stringify(deriveTraits(rules, data.blockhash, data.eligibleStrikes))) fail('traits do not follow from the seed');
         this.reveal = data;
         this.revealHash = ev.fileHash;
         this.changes.push({ kind: 'reveal', fileHash: ev.fileHash });
@@ -174,6 +220,7 @@ export class Ledger {
           this.curve.cursor += fresh;
           h.ranges = R.add(h.ranges, [issued]);
           this.changes.push({ kind: 'issue', account: ev.to, ranges: [issued] });
+          if (this.curve.cursor === this.config.saleableSupply && this.completionSlot === null) this.completionSlot = slot;
         }
         return;
       }
@@ -393,6 +440,10 @@ export class Ledger {
       lastSignature: this.lastSignature,
       launched: this.launched,
       commitRoot: this.commitRoot,
+      deadlineSlot: this.deadlineSlot,
+      completionSlot: this.completionSlot,
+      seedFixedAt: this.seedFixedAt,
+      seedCursor: this.seedCursor === null ? null : this.seedCursor.toString(),
       revealHash: this.revealHash,
       reveal: this.reveal,
       curve: { cursor: this.curve.cursor.toString(), returned: this.curve.returned.toString() },
@@ -413,6 +464,10 @@ export class Ledger {
     l.lastSignature = json.lastSignature;
     l.launched = json.launched;
     l.commitRoot = json.commitRoot;
+    l.deadlineSlot = json.deadlineSlot ?? null;
+    l.completionSlot = json.completionSlot ?? null;
+    l.seedFixedAt = json.seedFixedAt ?? null;
+    l.seedCursor = json.seedCursor === null || json.seedCursor === undefined ? null : BigInt(json.seedCursor);
     l.revealHash = json.revealHash;
     l.reveal = json.reveal;
     l.curve = { cursor: BigInt(json.curve.cursor), returned: BigInt(json.curve.returned) };

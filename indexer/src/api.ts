@@ -2,7 +2,6 @@
 import { createServer } from 'node:http';
 import type { Server, ServerResponse } from 'node:http';
 import type { Change, Ledger, TxChanges } from './ledger.ts';
-import { leafHash, merkleProof } from './reveal.ts';
 import * as R from './ranges.ts';
 import type { Range } from './ranges.ts';
 
@@ -101,13 +100,22 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
           const p = l.preview(account, amount, bal === null ? undefined : BigInt(bal));
           return send(200, { ...p, segments: traitsFor(l, R.splitByStrike(p.ranges, l.config.strikeSize)) });
         }
-        case 'proof': {
-          // Merkle proof for browser-side verification of a strike's traits (SPEC §4).
-          if (!l.reveal) return send(404, { error: 'not revealed yet' });
-          const n = Number(parts[1]);
-          const leaves = l.reveal.strikes.map(leafHash);
-          if (!leaves[n]) return send(404, { error: 'no such strike' });
-          return send(200, { strike: l.reveal.strikes[n], root: l.commitRoot, proof: merkleProof(leaves, n).map((b) => b.toString('hex')) });
+        case 'reveal': {
+          // Seed status before the reveal; afterwards everything a browser needs to recompute every
+          // Strike's traits from the committed rules and the public seed block (SPEC §4).
+          const status = {
+            commitRoot: l.commitRoot,
+            deadlineSlot: l.deadlineSlot,
+            completionSlot: l.completionSlot,
+            seedTargetSlot: l.seedFixedAt ?? l.seedTarget(),
+            seedFixed: l.seedFixedAt !== null,
+            eligibleStrikes: l.eligibleStrikes(),
+            revealed: !!l.reveal,
+            revealHash: l.revealHash,
+          };
+          if (!l.reveal) return send(200, status);
+          const { rules, seedSlot, blockhash } = l.reveal;
+          return send(200, { ...status, rules, seedSlot, blockhash });
         }
         case 'stream':
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });

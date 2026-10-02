@@ -59,31 +59,49 @@ Any transfer out of the curve account that is not a curve buy (e.g. migration to
 delivers melted tokens. The non-saleable reserve is therefore always common.
 There is no "Reserve Issue" trait.
 
-## 4. Traits: commit and reveal
+## 4. Traits: public rules, public seed
 
-### 4.1 Reveal file
-```json
-{ "version": 1,
-  "strikes": [ { "strike": 0, "rank": 0, "traits": ["Genesis"], "salt": "<64 hex>" }, ... ] }
-```
-- Exactly one entry per strike `0 … 793`, sorted by strike.
-- `rank` is an integer ≥ 0. **Higher = rarer.** 0 = common. Rank drives outflow order (§6).
-- Traits must not contain `|` or `,`. Salt is 32 random bytes (CSPRNG), unique per strike.
-  Salts stop anyone brute-forcing the tree before reveal.
+Nobody — including the team — can know which Strikes are rare while they are being sold.
 
-### 4.2 Hashing
-- `leaf = sha256(utf8("proof:v1|" + strike + "|" + rank + "|" + traits.join(",") + "|" + salt))`
-- Tree: leaves in strike order; `parent = sha256(left ‖ right)`; an odd node at any level is
-  paired with itself. Root is hex.
-- `fileHash = sha256(exact bytes of the published reveal file)`.
+### 4.1 Rules file (committed before launch)
+The rules file (`rules/sequents-v1.json`, from `rules/sequents-v1.template.json`) fixes everything
+except *which* Strikes get the random errors:
+- **Date tiers** (positional, public from the start): Genesis #0–#4 (40 pts), Key Date #5–#24 (15),
+  Final Strike #793 (10); every other Strike is Common Date (0).
+- **Errors** (random, at most one per Strike), assigned in this order: Double Die ×3 (100),
+  Wrong Planchet ×6 (70), Off-Center ×12 (50), Clipped Planchet ×24 (30), Die Crack ×48 (15) — 93
+  in total (11.7% of Strikes).
+- **Rank** = date points + error points. Higher = rarer; drives outflow order (§6).
+- `deadlineSlot`: the latest slot the seed point can be.
 
-### 4.3 On-chain memos (signed by the reveal authority)
-- `proof:v1:commit:<rootHex>` — valid only if posted **before the first curve buy**. Only the
-  first valid commit counts. Without it there is no rarity.
-- `proof:v1:reveal:<fileHashHex>` — valid only after the commit, once. The file must hash to
-  `fileHash` and its leaves must reproduce the committed root; otherwise the indexer halts.
+### 4.2 The seed point and eligible Strikes
+- **Seed target slot** `T = min(completion + 150, deadlineSlot)`, where `completion` is the slot of
+  the curve buy that issued the last saleable position (if it happens).
+- The ledger fixes the curve cursor as of `T`: at the first applied transaction with slot > `T`,
+  or once the indexer has applied every relevant transaction up to a slot > `T`.
+- **Eligible Strikes** = `floor(cursor at T / strike size)` — Strikes fully sold at `T`. Only they
+  can receive errors, so no one can target a known-rare unsold Strike.
+- **Seed block** = the first produced block at or after slot `T` (slots can be skipped).
 
-Before the reveal, every strike has rank 0.
+### 4.3 Derivation (`indexer/src/derive.ts`, identical in the indexer and the browser)
+- `seed = sha256(utf8("sequents:v1:seed|" + blockhash))`, `blockhash` in base58.
+- Random stream: `sha256(seed ‖ u32le(counter))`, consumed as little-endian u32s; uniform integers
+  by rejection sampling.
+- Fisher–Yates over `[0, eligible)` (for `i` from `eligible−1` down to 1, swap with `below(i+1)`).
+  The first 3 Strikes in the resulting order are Double Die, the next 6 Wrong Planchet, and so on.
+  If errors outnumber eligible Strikes, the rarest are assigned first.
+
+### 4.4 On-chain memos (signed by the reveal authority)
+- `proof:v1:commit:<sha256 of rules file>:<deadlineSlot>` — valid only before the first curve
+  buy and with a future deadline. Only the first valid commit counts. Without it there is no rarity.
+- `proof:v1:reveal:<sha256 of reveal file>` — valid only after the seed point is fixed, once. The
+  reveal file carries the rules text, `seedTargetSlot`, `seedSlot`, `blockhash`,
+  `eligibleStrikes` and the derived traits. The ledger requires: rules hash = commitment, deadline
+  = memo deadline, `seedTargetSlot` and `eligibleStrikes` = its own, traits = the derivation. The
+  operator checks `seedSlot`/`blockhash` against the chain before registering the file; browsers
+  check them again. Any mismatch halts the indexer.
+
+Before the reveal every Strike has rank 0. Tools: `ops/make-commit.ts`, `ops/make-reveal.ts`.
 
 ## 5. Where rarity can live
 
@@ -202,7 +220,7 @@ strings) after a given slot. Published at fixed intervals; both indexers must ma
 | Only exit is `withdraw`, which melts | ✓ | |
 | Vault balance ≥ listed ranges total | ✓ | ✓ |
 | Contents match the ranges shown | | ✓ (rechecked right before the buyer signs) |
-| Traits match the committed root (Merkle proof) | | ✓ (verified in the browser) |
+| Traits follow from the committed rules and the seed block | | ✓ (recomputed in the browser) |
 
 ### 9.2 Mint (verified once at launch, published)
 Mint authority: none · Freeze authority: none · No permanent delegate, transfer fee, transfer

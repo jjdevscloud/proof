@@ -1,41 +1,29 @@
-// Step 3 (after anchor deploy): mint, mock curve, reveal file + commit memo, vault config,
-// and the indexer's devnet config.
-import { randomBytes } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+// Step 3 (after the programs are deployed or loaded): test wallets, rules file + commit memo,
+// mint, mock curve, vault config, and the indexer configs for this cluster.
+// Works on devnet and on a local validator (RPC_URL=http://127.0.0.1:8899).
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LAMPORTS_PER_SOL, SystemProgram } from '@solana/web3.js';
 import { AuthorityType, createMint, getMint, mintTo, setAuthority } from '@solana/spl-token';
 import {
-  DECIMALS, REPO, RPC_URL, T, connection, curvePdas, initializeCurveIx, key, loadState, memoIx, programId, saveState, send,
-  vaultConfigPda, vaultInitializeIx,
+  CLUSTER, DECIMALS, REPO, ROOT, RPC_URL, RULES_PATH, T, connection, curvePdas, initializeCurveIx, key, loadState, memoIx,
+  programId, saveState, send, vaultConfigPda, vaultInitializeIx,
 } from './lib.ts';
-import { leafHash, merkleRoot, sha256 } from '../indexer/src/reveal.ts';
+import { sha256 } from '../indexer/src/reveal.ts';
 
 const SALEABLE = 793_100_000n * T;
 const TOTAL = 1_000_000_000n * T;
 const STRIKE = 1_000_000n * T;
-const STRIKES = Number((SALEABLE + STRIKE - 1n) / STRIKE);
-
-// Fixed test traits so verify.ts can predict outflow order: strikes 0–9 Genesis,
-// Double Die on 1, 400, 700. Higher rank = rarer.
-export function testReveal() {
-  const doubleDie = new Set([1, 400, 700]);
-  return {
-    version: 1 as const,
-    strikes: Array.from({ length: STRIKES }, (_, i) => {
-      const traits = [...(i < 10 ? ['Genesis'] : ['Common Date']), ...(doubleDie.has(i) ? ['Double Die'] : [])];
-      const rank = (i < 10 ? 2 : 0) + (doubleDie.has(i) ? 5 : 0);
-      return { strike: i, rank, traits, salt: randomBytes(32).toString('hex') };
-    }),
-  };
-}
 
 const payer = key('payer');
 const reveal = key('reveal');
 const state = loadState();
 
+if (CLUSTER === 'localnet' && (await connection.getBalance(payer.publicKey)) < LAMPORTS_PER_SOL) {
+  await connection.confirmTransaction(await connection.requestAirdrop(payer.publicKey, 100 * LAMPORTS_PER_SOL), 'confirmed');
+}
 const bal = await connection.getBalance(payer.publicKey);
-console.log(`payer ${payer.publicKey.toBase58()} has ${bal / LAMPORTS_PER_SOL} SOL`);
+console.log(`[${CLUSTER}] payer ${payer.publicKey.toBase58()} has ${bal / LAMPORTS_PER_SOL} SOL`);
 
 // Fund the reveal authority and test wallets (fees + account rent).
 for (const name of ['reveal', 'alice', 'bob', 'carol', 'dave', 'erin', 'pool'] as const) {
@@ -45,16 +33,16 @@ for (const name of ['reveal', 'alice', 'bob', 'carol', 'dave', 'erin', 'pool'] a
   }
 }
 
-// Reveal file and commit memo come before the first curve buy (SPEC §4.3).
+// Rules file and commit memo come before the first curve buy (SPEC §4.3). The deadline is short
+// for testing (DEADLINE_SLOTS, default 600 ≈ 4 minutes); the scenario's buys happen before it.
 if (!state.commitSig) {
-  const data = testReveal();
-  const bytes = Buffer.from(JSON.stringify(data, null, 1));
-  const revealPath = join(REPO, 'devnet', 'reveal.json');
-  writeFileSync(revealPath, bytes);
-  const root = merkleRoot(data.strikes.map(leafHash)).toString('hex');
-  state.revealFileHash = sha256(bytes).toString('hex');
-  state.startSlot = (await connection.getSlot('finalized')) - 1;
-  state.commitSig = await send([memoIx(`proof:v1:commit:${root}`, reveal.publicKey)], [reveal], 'commit memo');
+  const now = await connection.getSlot('finalized');
+  const deadline = now + Number(process.env.DEADLINE_SLOTS ?? 600);
+  const text = readFileSync(join(ROOT, 'test-rules.template.json'), 'utf8').replace('"deadlineSlot": 0', `"deadlineSlot": ${deadline}`);
+  writeFileSync(RULES_PATH, text);
+  state.startSlot = now - 1;
+  state.deadlineSlot = deadline;
+  state.commitSig = await send([memoIx(`proof:v1:commit:${sha256(text).toString('hex')}:${deadline}`, reveal.publicKey)], [reveal], 'commit memo');
   saveState(state);
 }
 
@@ -82,10 +70,10 @@ if (!(await connection.getAccountInfo(vaultConfigPda()))) {
 
 const indexerConfig = {
   rpcUrl: RPC_URL,
-  dataDir: './data-devnet',
+  dataDir: `./data-${CLUSTER}`,
   port: 8787,
   pollMs: 3000,
-  maxWindowSlots: 2000,
+  maxWindowSlots: 100000,
   startSlot: state.startSlot,
   fingerprintEverySlots: 500,
   mint: mint.toBase58(),
@@ -96,8 +84,8 @@ const indexerConfig = {
   revealAuthority: reveal.publicKey.toBase58(),
   saleableSupply: SALEABLE.toString(),
   strikeSize: STRIKE.toString(),
-  revealFile: '../devnet/reveal.json',
+  revealFile: `../devnet/reveal.${CLUSTER}.json`,
 };
-writeFileSync(join(REPO, 'indexer', 'config.devnet.json'), JSON.stringify(indexerConfig, null, 2));
-writeFileSync(join(REPO, 'indexer', 'config.devnet-b.json'), JSON.stringify({ ...indexerConfig, dataDir: './data-devnet-b', port: 8788 }, null, 2));
-console.log('\nwrote indexer/config.devnet.json and config.devnet-b.json (second, independent instance)');
+writeFileSync(join(REPO, 'indexer', `config.${CLUSTER}.json`), JSON.stringify(indexerConfig, null, 2));
+writeFileSync(join(REPO, 'indexer', `config.${CLUSTER}-b.json`), JSON.stringify({ ...indexerConfig, dataDir: `./data-${CLUSTER}-b`, port: 8788 }, null, 2));
+console.log(`\nwrote indexer/config.${CLUSTER}.json and config.${CLUSTER}-b.json (second, independent instance)`);

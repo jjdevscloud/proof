@@ -167,9 +167,11 @@ export class Decoder {
 }
 
 function memoEvent(text: string): LedgerEvent | null {
-  const m = /^proof:v1:(commit|reveal):([0-9a-f]{64})$/.exec(text.trim());
-  if (!m) return null;
-  return m[1] === 'commit' ? { kind: 'commit', root: m[2] } : { kind: 'reveal', fileHash: m[2] };
+  // proof:v1:commit:<sha256 of rules file>:<deadline slot>   |   proof:v1:reveal:<sha256 of reveal file>
+  const c = /^proof:v1:commit:([0-9a-f]{64}):([0-9]{1,15})$/.exec(text.trim());
+  if (c) return { kind: 'commit', root: c[1], deadlineSlot: Number(c[2]) };
+  const r = /^proof:v1:reveal:([0-9a-f]{64})$/.exec(text.trim());
+  return r ? { kind: 'reveal', fileHash: r[1] } : null;
 }
 
 function discriminatorOf(ix: Ix): string {

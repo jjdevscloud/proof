@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "project": "Sequents",
+  "token": "$PROOF",
+  "strikeSize": "1000000000000",
+  "strikeCount": 794,
+  "deadlineSlot": 0,
+  "dates": [
+    { "name": "Genesis", "from": 0, "to": 4, "points": 40 },
+    { "name": "Key Date", "from": 5, "to": 24, "points": 15 },
+    { "name": "Final Strike", "from": 793, "to": 793, "points": 10 }
+  ],
+  "defaultDate": { "name": "Common Date", "points": 0 },
+  "errors": [
+    { "name": "Double Die", "count": 3, "points": 100 },
+    { "name": "Wrong Planchet", "count": 6, "points": 70 },
+    { "name": "Off-Center", "count": 12, "points": 50 },
+    { "name": "Clipped Planchet", "count": 24, "points": 30 },
+    { "name": "Die Crack", "count": 48, "points": 15 }
+  ]
+}

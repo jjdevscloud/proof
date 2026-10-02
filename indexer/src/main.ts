@@ -47,16 +47,32 @@ if (existsSync(snapshotPath)) {
   ledger = new Ledger(ledgerConfig);
 }
 
-if (config.revealFile && existsSync(config.revealFile)) {
-  const { data, fileHash } = parseReveal(readFileSync(config.revealFile), ledger.strikeCount);
+const rpc = new Rpc(config.rpcUrl);
+
+// Registers the reveal file once it exists, after checking its seed block against the chain:
+// it must be the first block produced at or after the seed target slot, with that exact hash.
+// Checked every cycle, so publishing the file needs no restart. A file that fails is not
+// registered; if its reveal memo is posted anyway, the ledger halts (SPEC §4.4).
+let registeredReveal: string | null = null;
+async function registerRevealFile() {
+  if (!config.revealFile || ledger.reveal || !existsSync(config.revealFile)) return;
+  const bytes = readFileSync(config.revealFile);
+  const { data, fileHash } = parseReveal(bytes);
+  if (registeredReveal === fileHash) return;
+  const first = await rpc.firstBlockFrom(data.seedTargetSlot);
+  if (first?.slot !== data.seedSlot || first.blockhash !== data.blockhash) {
+    console.error(`reveal file ${fileHash} NOT registered: seed block is slot ${first?.slot} hash ${first?.blockhash}`);
+    return;
+  }
   ledger.registerReveal(data, fileHash);
+  registeredReveal = fileHash;
   console.log(`reveal file registered: ${fileHash}`);
 }
 
 const follower = new Follower(
   ledger,
   new Decoder(config),
-  new Rpc(config.rpcUrl),
+  rpc,
   { ...config },
   syncedSlot,
 );
@@ -100,6 +116,7 @@ async function loop() {
   for (;;) {
     const pending: TxChanges[] = [];
     try {
+      await registerRevealFile();
       const n = await follower.syncOnce((c) => pending.push(c));
       // Persist changes and the snapshot only after the whole window applied cleanly.
       for (const c of pending) {

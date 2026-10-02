@@ -1,0 +1,12 @@
+{
+  "name": "sequents-ops",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "commit": "node make-commit.ts",
+    "reveal": "node make-reveal.ts"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.99.0"
+  }
+}

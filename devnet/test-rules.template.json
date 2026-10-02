@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "project": "Sequents test",
+  "token": "$PROOF",
+  "strikeSize": "1000000000000",
+  "strikeCount": 794,
+  "deadlineSlot": 0,
+  "dates": [
+    { "name": "Genesis", "from": 0, "to": 0, "points": 2 },
+    { "name": "Double Date", "from": 1, "to": 1, "points": 7 },
+    { "name": "Genesis", "from": 2, "to": 9, "points": 2 }
+  ],
+  "defaultDate": { "name": "Common Date", "points": 0 },
+  "errors": [
+    { "name": "Die Crack", "count": 6, "points": 1 }
+  ]
+}
