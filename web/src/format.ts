@@ -49,9 +49,11 @@ export function lamportsFromSol(input: string): bigint {
   return BigInt(m[1]) * 1_000_000_000n + BigInt((m[2] ?? '').padEnd(9, '0'));
 }
 
-// Rarity tier from rank: 0 common, 1–2 uncommon, 3–5 rare, 6+ legendary.
+// Display tier from rank (date points + error points, rules/sequents-v1): 0 common, 1–29 uncommon
+// (Final Strike, Key Date, Die Crack), 30–69 rare (Clipped Planchet, Genesis, Off-Center),
+// 70+ legendary (Wrong Planchet, Double Die, and strong stacks).
 export function tier(rank: number): 0 | 1 | 2 | 3 {
-  return rank <= 0 ? 0 : rank <= 2 ? 1 : rank <= 5 ? 2 : 3;
+  return rank <= 0 ? 0 : rank < 30 ? 1 : rank < 70 ? 2 : 3;
 }
 export const TIER_NAMES = ['Common', 'Uncommon', 'Rare', 'Legendary'] as const;
 

@@ -66,7 +66,7 @@ export function Prelaunch() {
               <tbody>
                 {r.errors.map((e) => (
                   <tr key={e.name}>
-                    <td><span className={`tier-dot t${tier(e.points >= 100 ? 6 : e.points >= 50 ? 4 : 2)}`} />{e.name}</td>
+                    <td><span className={`tier-dot t${tier(e.points)}`} />{e.name}</td>
                     <td className="num mono">{e.count}</td>
                     <td className="num mono">{e.points}</td>
                     <td className="num mono">{pct(odds(r.strikeCount, e.count, 1))}</td>
@@ -86,7 +86,7 @@ export function Prelaunch() {
               <tbody>
                 {r.dates.map((d) => (
                   <tr key={d.name}>
-                    <td><span className={`tier-dot t${tier(d.points >= 40 ? 2 : 1)}`} />{d.name}</td>
+                    <td><span className={`tier-dot t${tier(d.points)}`} />{d.name}</td>
                     <td className="mono small">{d.from === d.to ? `#${d.from}` : `#${d.from}–#${d.to}`}</td>
                     <td className="num mono">{d.points}</td>
                   </tr>
