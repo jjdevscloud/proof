@@ -1,6 +1,10 @@
-// Read-only HTTP API over the ledger, plus a server-sent-events stream of changes.
+// Read-only HTTP API over the ledger, plus a server-sent-events stream of changes. In production it
+// also serves the built website and a restricted Solana RPC proxy, so the RPC key never reaches
+// browsers and the site, API and RPC share one origin.
 import { createServer } from 'node:http';
-import type { Server, ServerResponse } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize, sep } from 'node:path';
 import type { Change, Ledger, TxChanges } from './ledger.ts';
 import * as R from './ranges.ts';
 import type { Range } from './ranges.ts';
@@ -19,7 +23,18 @@ export type ApiState = {
   syncedSlot: () => number;
   publicConfig: PublicConfig;
   history?: TxChanges[]; // oldest first; the API appends broadcast changes to it
+  staticDir?: string; // built website (web/dist); when set, the API lives under /api
+  rpcUrl?: string; // upstream Solana RPC for the /rpc proxy (kept server-side)
 };
+
+const API_ROUTES = new Set(['health', 'config', 'stats', 'wallet', 'strike', 'strikes', 'envelopes', 'envelope', 'activity', 'preview', 'reveal', 'stream']);
+
+// What the website needs from Solana, and nothing heavier: no transaction-history or full-block queries.
+const RPC_METHODS = new Set([
+  'getLatestBlockhash', 'getAccountInfo', 'getMultipleAccounts', 'getBalance', 'getMinimumBalanceForRentExemption',
+  'sendTransaction', 'simulateTransaction', 'getSignatureStatuses', 'getBlocks', 'getBlock', 'getSlot', 'getBlockHeight',
+]);
+const RPC_PER_MINUTE = 300;
 
 export function json(value: unknown): string {
   return JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
@@ -37,9 +52,14 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
   };
   history.forEach(index);
 
+  const rpcHits = new Map<string, { minute: number; count: number }>();
+
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
-    const parts = url.pathname.split('/').filter(Boolean);
+    let parts = url.pathname.split('/').filter(Boolean);
+    if (url.pathname === '/rpc') return void proxyRpc(req, res, state.rpcUrl, rpcHits);
+    if (parts[0] === 'api') parts = parts.slice(1);
+    else if (state.staticDir && !API_ROUTES.has(parts[0] ?? '')) return void serveStatic(res, state.staticDir, url.pathname);
     const send = (status: number, body: unknown) => {
       res.writeHead(status, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
       res.end(json(body));
@@ -206,4 +226,74 @@ function stats(l: Ledger) {
     revealed: !!l.reveal,
     lastSlot: l.lastSlot,
   };
+}
+
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
+  '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain',
+};
+
+async function serveStatic(res: ServerResponse, dir: string, pathname: string) {
+  const root = normalize(dir);
+  let file = normalize(join(root, decodeURIComponent(pathname)));
+  if (!file.startsWith(root + sep) && file !== root) {
+    res.writeHead(400).end();
+    return;
+  }
+  if (file === root || pathname.endsWith('/')) file = join(root, 'index.html');
+  try {
+    const body = await readFile(file);
+    const immutable = pathname.startsWith('/assets/');
+    res.writeHead(200, {
+      'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
+      'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+      'x-content-type-options': 'nosniff',
+    });
+    res.end(body);
+  } catch {
+    // Unknown paths get the app (hash routing handles the rest).
+    const index = await readFile(join(root, 'index.html')).catch(() => null);
+    res.writeHead(index ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+    res.end(index ?? 'not found');
+  }
+}
+
+async function proxyRpc(req: IncomingMessage, res: ServerResponse, upstream: string | undefined, hits: Map<string, { minute: number; count: number }>) {
+  const reply = (status: number, body: unknown) => {
+    res.writeHead(status, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+  if (!upstream) return reply(404, { error: 'rpc proxy not configured' });
+  if (req.method !== 'POST') return reply(405, { error: 'POST only' });
+  const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+  const minute = Math.floor(Date.now() / 60000);
+  const h = hits.get(ip);
+  if (!h || h.minute !== minute) hits.set(ip, { minute, count: 1 });
+  else if (++h.count > RPC_PER_MINUTE) return reply(429, { error: 'rate limited' });
+  if (hits.size > 10000) hits.clear();
+
+  let raw = '';
+  for await (const chunk of req) {
+    raw += chunk;
+    if (raw.length > 65536) return reply(413, { error: 'request too large' });
+  }
+  let body: any;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return reply(400, { error: 'invalid JSON' });
+  }
+  if (Array.isArray(body) || !RPC_METHODS.has(body?.method)) {
+    return reply(403, { jsonrpc: '2.0', id: body?.id ?? null, error: { code: -32601, message: 'method not allowed by this proxy' } });
+  }
+  if (body.method === 'getBlock' && body.params?.[1]?.transactionDetails !== 'none') {
+    return reply(403, { jsonrpc: '2.0', id: body.id, error: { code: -32602, message: 'getBlock is limited to transactionDetails: none' } });
+  }
+  try {
+    const upstreamRes = await fetch(upstream, { method: 'POST', headers: { 'content-type': 'application/json' }, body: raw });
+    res.writeHead(upstreamRes.status, { 'content-type': 'application/json' });
+    res.end(await upstreamRes.text());
+  } catch {
+    reply(502, { error: 'upstream RPC unavailable' });
+  }
 }

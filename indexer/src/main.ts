@@ -28,7 +28,15 @@ type Config = {
   revealFile?: string;
 };
 
+// Settings come from a JSON file (argv[2]); hosting-specific values can be overridden by
+// environment variables so secrets (RPC_URL) never live in a committed file.
 const config: Config = JSON.parse(readFileSync(process.argv[2] ?? 'config.json', 'utf8'));
+const env = process.env;
+if (env.RPC_URL) config.rpcUrl = env.RPC_URL;
+if (env.PORT) config.port = Number(env.PORT);
+if (env.DATA_DIR) config.dataDir = env.DATA_DIR;
+if (env.REVEAL_FILE) config.revealFile = env.REVEAL_FILE;
+const staticDir = env.STATIC_DIR || undefined;
 mkdirSync(config.dataDir, { recursive: true });
 const snapshotPath = join(config.dataDir, 'snapshot.json');
 const ledgerConfig = {
@@ -95,6 +103,8 @@ const { server, broadcast } = createApi({
   ledger,
   syncedSlot: () => follower.syncedSlot,
   history,
+  staticDir,
+  rpcUrl: env.PUBLIC_RPC_PROXY === 'off' ? undefined : config.rpcUrl,
   publicConfig: {
     mint: config.mint,
     vaultProgramId: config.vaultProgramId,
@@ -103,7 +113,7 @@ const { server, broadcast } = createApi({
     revealAuthority: config.revealAuthority,
   },
 });
-server.listen(config.port, () => console.log(`api on :${config.port}, synced to slot ${syncedSlot}`));
+server.listen(config.port, () => console.log(`listening on :${config.port}${staticDir ? ' (website + /api + /rpc)' : ''}, synced to slot ${syncedSlot}`));
 
 function saveSnapshot() {
   const tmp = snapshotPath + '.tmp';

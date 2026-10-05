@@ -1,0 +1,12 @@
+**/node_modules
+target
+.git
+.anchor
+.env*
+devnet/keys
+devnet/state*.json
+indexer/data*
+indexer/*.log
+web/dist
+programs
+scripts

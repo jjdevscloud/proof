@@ -29,7 +29,8 @@ if (existsSync(out)) {
   const template = readFileSync(need(a, 'template'), 'utf8');
   if (!template.includes('"deadlineSlot": 0')) throw new Error('template must contain "deadlineSlot": 0');
   text = template.replace('"deadlineSlot": 0', `"deadlineSlot": ${deadline}`);
-  writeFileSync(out, text);
+  // Only a real commit freezes the file; a dry run leaves nothing behind.
+  if (a.post) writeFileSync(out, text);
 }
 const rules = parseRules(text);
 const hash = createHash('sha256').update(text).digest('hex');

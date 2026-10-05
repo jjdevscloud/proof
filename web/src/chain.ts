@@ -9,8 +9,23 @@ import {
 import { useSyncExternalStore } from 'react';
 import type { Config } from './api.ts';
 
-export const RPC_URL = import.meta.env.VITE_RPC_URL ?? 'https://api.devnet.solana.com';
+// Production builds use '/rpc': the site's own server forwards a restricted set of methods, so the
+// RPC provider's key is never exposed to browsers.
+const configuredRpc = import.meta.env.VITE_RPC_URL ?? 'https://api.devnet.solana.com';
+export const RPC_URL = configuredRpc.startsWith('/') ? `${location.origin}${configuredRpc}` : configuredRpc;
 export const connection = new Connection(RPC_URL, 'confirmed');
+
+// Polls for confirmation instead of a websocket subscription (the /rpc proxy is HTTP only).
+async function confirm(signature: string, lastValidBlockHeight: number): Promise<void> {
+  for (;;) {
+    const { value } = await connection.getSignatureStatuses([signature]);
+    const st = value[0];
+    if (st?.err) throw new Error(`Transaction failed: ${JSON.stringify(st.err)}`);
+    if (st && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized')) return;
+    if ((await connection.getBlockHeight('confirmed')) > lastValidBlockHeight) throw new Error('Transaction expired before confirming; please try again');
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
 
 // ---- wallet (injected providers: Phantom, Solflare, Backpack) ----
 
@@ -149,8 +164,7 @@ export async function signAndSend(ixs: TransactionInstruction[]): Promise<string
   const tx = new Transaction({ feePayer: new PublicKey(connected), blockhash, lastValidBlockHeight }).add(...ixs);
   const signed = await p.signTransaction(tx);
   const sig = await connection.sendRawTransaction(signed.serialize());
-  const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-  if (res.value.err) throw new Error(`Transaction failed: ${JSON.stringify(res.value.err)}`);
+  await confirm(sig, lastValidBlockHeight);
   return sig;
 }
 
