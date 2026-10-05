@@ -1,5 +1,6 @@
 // Typed client for the indexer API. All amounts/positions arrive as decimal strings.
 import { useCallback, useEffect, useState } from 'react';
+import { DEMO, demoApi } from './demo.ts';
 
 export const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -97,6 +98,10 @@ export type RevealStatus = {
 };
 
 export async function api<T>(path: string): Promise<T> {
+  if (DEMO) {
+    await new Promise((r) => setTimeout(r, 150));
+    return demoApi(path) as T;
+  }
   const res = await fetch(API_URL + path);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -140,6 +145,7 @@ export function useApi<T>(path: string | null): { data: T | null; error: string 
 
 // Live updates from the indexer's server-sent events.
 export function subscribe(onChange: (c: TxChanges) => void): () => void {
+  if (DEMO) return () => {};
   let es: EventSource | null = null;
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | undefined;

@@ -13,3 +13,4 @@ devnet/rules.localnet.json
 devnet/reveal.localnet.json
 .env*
 !.env.example
+!web/.env.demo

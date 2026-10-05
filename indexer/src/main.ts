@@ -112,6 +112,7 @@ const { server, broadcast } = createApi({
   syncedSlot: () => follower.syncedSlot,
   history,
   staticDir,
+  previewDir: env.STATIC_PREVIEW_DIR || undefined,
   pending,
   rulesText,
   rpcUrl: env.PUBLIC_RPC_PROXY === 'off' ? undefined : config.rpcUrl,

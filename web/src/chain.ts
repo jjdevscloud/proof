@@ -8,6 +8,7 @@ import {
 } from '@solana/spl-token';
 import { useSyncExternalStore } from 'react';
 import type { Config } from './api.ts';
+import { DEMO, DEMO_WALLET } from './demo.ts';
 
 // Production builds use '/rpc': the site's own server forwards a restricted set of methods, so the
 // RPC provider's key is never exposed to browsers.
@@ -37,7 +38,16 @@ type Provider = {
   on?: (event: string, cb: (...args: any[]) => void) => void;
 };
 
+// Demo mode: a pretend wallet that always connects as DEMO_WALLET.
+const demoProvider: Provider = {
+  publicKey: null,
+  connect: async () => ({ publicKey: new PublicKey(DEMO_WALLET) }),
+  disconnect: async () => {},
+  signTransaction: async (tx) => tx,
+};
+
 function provider(): Provider | null {
+  if (DEMO) return demoProvider;
   const w = window as any;
   return w.phantom?.solana ?? w.solflare ?? w.backpack ?? w.solana ?? null;
 }
@@ -142,6 +152,7 @@ export function useWallet(): {
 export type Sender = (feePayer: string, ixs: TransactionInstruction[]) => Promise<string>;
 
 export const walletSender: Sender = (feePayer, ixs) => {
+  if (DEMO) return new Promise((r) => setTimeout(() => r(`demo${Date.now()}`), 900));
   if (feePayer !== connected) throw new Error('Connected wallet does not match this action');
   return signAndSend(ixs);
 };
@@ -222,6 +233,7 @@ export class Vault {
 
   async seal(holder: string, source: string, ranges: { start: bigint; end: bigint }[]): Promise<string> {
     if (ranges.length < 1 || ranges.length > 8) throw new Error('An envelope holds 1 to 8 ranges');
+    if (DEMO) return this.send(holder, []); // demo: no chain reads
     const info = await connection.getAccountInfo(this.configPda());
     if (!info) throw new Error('Vault program is not initialized');
     const id = info.data.readBigUInt64LE(8);
@@ -268,6 +280,7 @@ export class Vault {
 
   // Sends everything to the holder's associated token account (created if needed). Melts.
   async withdraw(holder: string, envelope: string, vault: string): Promise<string> {
+    if (DEMO) return this.send(holder, []);
     const owner = new PublicKey(holder);
     const tokenProgram = await this.tokenProgram();
     const destination = getAssociatedTokenAddressSync(this.mint, owner, false, tokenProgram);
@@ -285,6 +298,7 @@ export class Vault {
   // associated token account, so testers get rare positions without pump.fun.
   async devnetCurveBuy(buyer: string, tokens: bigint): Promise<string> {
     if (import.meta.env.VITE_CLUSTER === 'mainnet-beta') throw new Error('Test tokens are devnet-only');
+    if (DEMO) return this.send(buyer, []);
     const owner = new PublicKey(buyer);
     const curveProgram = new PublicKey(this.config.curveProgramId);
     const curve = PublicKey.findProgramAddressSync([Buffer.from('curve'), this.mint.toBuffer()], curveProgram)[0];
@@ -307,6 +321,10 @@ export class Vault {
   async checkEnvelope(address: string, expect: { holder: string; price: string; ranges: { start: string; end: string }[] }): Promise<Check[]> {
     const checks: Check[] = [];
     const add = (label: string, ok: boolean, detail = '') => checks.push({ label, ok, detail });
+    if (DEMO) {
+      for (const l of ['Envelope belongs to the Sequents vault program', "Envelope address is the program's own (no private key exists)", 'Listed for sale', 'Price matches the listing', 'Token is the official $PROOF mint', 'Only the envelope controls the vault', 'No delegate can move the tokens', 'No close authority', 'Not frozen', 'Vault balance covers the sealed amount', 'Ledger confirms the seller really held these tokens']) add(l, true, 'demo');
+      return checks;
+    }
     const envKey = new PublicKey(address);
     const envInfo = await connection.getAccountInfo(envKey);
     if (!envInfo) {

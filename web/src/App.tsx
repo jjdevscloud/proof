@@ -11,6 +11,7 @@ import { Desk } from './pages/Desk.tsx';
 import { WalletPage } from './pages/Wallet.tsx';
 import { Rules } from './pages/Rules.tsx';
 import { Prelaunch } from './pages/Prelaunch.tsx';
+import { DEMO } from './demo.ts';
 
 const ConfigContext = createContext<{ config: Config; vault: Vault } | null>(null);
 export function useConfig(): Config {
@@ -51,6 +52,7 @@ export function App() {
 
   return (
     <>
+      {DEMO && <div className="demo-banner">Preview with demo data — nothing here is real, and no transactions are sent.</div>}
       <Header route={route[0] ?? ''} pending={!!config?.pending} />
       <main className="container">
         {error && !config && (

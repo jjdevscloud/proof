@@ -5,6 +5,7 @@ import type { StrikeTraits } from '../../indexer/src/derive.ts';
 import { api } from './api.ts';
 import type { Config, RevealStatus } from './api.ts';
 import { connection } from './chain.ts';
+import { DEMO, demoTraits } from './demo.ts';
 
 export type Step = { label: string; ok: boolean; detail: string };
 export type Verification = { ok: boolean; steps: Step[]; traits: StrikeTraits[] | null; reveal: RevealStatus };
@@ -23,6 +24,10 @@ export function verifyReveal(config: Config): Promise<Verification> {
 async function run(config: Config): Promise<Verification> {
   const reveal = await api<RevealStatus>('/reveal');
   const steps: Step[] = [];
+  if (DEMO) {
+    const ok = (label: string) => ({ label, ok: true, detail: 'demo' });
+    return { ok: true, traits: demoTraits, reveal, steps: [ok('Rules match the commitment posted before launch'), ok(`Seed block is the first block at or after slot ${reveal.seedTargetSlot}`), ok('Seed block hash matches the chain'), ok('Traits recomputed in your browser')] };
+  }
   const add = (label: string, ok: boolean, detail = '') => steps.push({ label, ok, detail });
   if (!reveal.revealed || !reveal.rules || !reveal.blockhash || reveal.seedSlot === undefined) {
     return { ok: false, steps, traits: null, reveal };

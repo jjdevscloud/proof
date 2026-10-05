@@ -330,3 +330,6 @@ input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent);
 /* ---- pre-launch ---- */
 .steps { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; }
 .steps li { padding-left: 4px; }
+
+/* ---- demo preview ---- */
+.demo-banner { background: var(--accent); color: var(--accent-ink); text-align: center; font-size: 0.85rem; font-weight: 600; padding: 6px 16px; }

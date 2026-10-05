@@ -24,6 +24,7 @@ export type ApiState = {
   publicConfig: PublicConfig;
   history?: TxChanges[]; // oldest first; the API appends broadcast changes to it
   staticDir?: string; // built website (web/dist); when set, the API lives under /api
+  previewDir?: string; // demo-data build of every page (web/dist-preview), served at /preview
   rpcUrl?: string; // upstream Solana RPC for the /rpc proxy (kept server-side)
   pending?: boolean; // pre-launch: no mint yet, nothing indexed
   rulesText?: string; // the rarity rules (committed file, or the template before launch)
@@ -60,6 +61,13 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
     const url = new URL(req.url ?? '/', 'http://x');
     let parts = url.pathname.split('/').filter(Boolean);
     if (url.pathname === '/rpc') return void proxyRpc(req, res, state.rpcUrl, rpcHits);
+    if (state.previewDir && (url.pathname === '/preview' || url.pathname.startsWith('/preview/'))) {
+      if (url.pathname === '/preview') {
+        res.writeHead(301, { location: '/preview/' }).end();
+        return;
+      }
+      return void serveStatic(res, state.previewDir, url.pathname.slice('/preview'.length));
+    }
     if (parts[0] === 'api') parts = parts.slice(1);
     else if (state.staticDir && !API_ROUTES.has(parts[0] ?? '')) return void serveStatic(res, state.staticDir, url.pathname);
     const send = (status: number, body: unknown) => {
