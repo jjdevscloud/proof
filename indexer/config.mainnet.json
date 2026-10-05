@@ -1,0 +1,18 @@
+{
+  "rpcUrl": "set via RPC_URL",
+  "dataDir": "/data",
+  "port": 8787,
+  "pollMs": 2000,
+  "maxWindowSlots": 20000,
+  "startSlot": 0,
+  "fingerprintEverySlots": 9000,
+  "mint": "PENDING",
+  "curveTokenAccount": "PENDING",
+  "pumpProgramId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+  "pumpNonBuyInstructions": ["migrate", "withdraw"],
+  "vaultProgramId": "7wGSg7XW8KGGHF772PUoNnGKAKWSCFuRu3tdsLXEY62D",
+  "revealAuthority": "6u4FDg7cLvZNrc1sQX3d7Dtu2RdSQvKvPLzpmjeTEq6K",
+  "saleableSupply": "793100000000000",
+  "strikeSize": "1000000000000",
+  "revealFile": "/data/reveal.json"
+}

@@ -25,9 +25,11 @@ export type ApiState = {
   history?: TxChanges[]; // oldest first; the API appends broadcast changes to it
   staticDir?: string; // built website (web/dist); when set, the API lives under /api
   rpcUrl?: string; // upstream Solana RPC for the /rpc proxy (kept server-side)
+  pending?: boolean; // pre-launch: no mint yet, nothing indexed
+  rulesText?: string; // the rarity rules (committed file, or the template before launch)
 };
 
-const API_ROUTES = new Set(['health', 'config', 'stats', 'wallet', 'strike', 'strikes', 'envelopes', 'envelope', 'activity', 'preview', 'reveal', 'stream']);
+const API_ROUTES = new Set(['health', 'config', 'rules', 'stats', 'wallet', 'strike', 'strikes', 'envelopes', 'envelope', 'activity', 'preview', 'reveal', 'stream']);
 
 // What the website needs from Solana, and nothing heavier: no transaction-history or full-block queries.
 const RPC_METHODS = new Set([
@@ -79,7 +81,13 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
             commitRoot: l.commitRoot,
             revealHash: l.revealHash,
             revealed: !!l.reveal,
+            pending: !!state.pending,
           });
+        case 'rules': {
+          if (!state.rulesText) return send(404, { error: 'rules not available' });
+          const rules = JSON.parse(state.rulesText);
+          return send(200, { final: rules.deadlineSlot > 0, rules });
+        }
         case 'stats':
           return send(200, stats(l));
         case 'wallet':

@@ -10,6 +10,7 @@ import { StrikePage } from './pages/Strike.tsx';
 import { Desk } from './pages/Desk.tsx';
 import { WalletPage } from './pages/Wallet.tsx';
 import { Rules } from './pages/Rules.tsx';
+import { Prelaunch } from './pages/Prelaunch.tsx';
 
 const ConfigContext = createContext<{ config: Config; vault: Vault } | null>(null);
 export function useConfig(): Config {
@@ -42,14 +43,15 @@ const NAV = [
 
 export function App() {
   const { data: config, error } = useApi<Config>('/config');
-  const vault = useMemo(() => (config ? new Vault(config) : null), [config]);
+  // Pre-launch there is no mint, so no vault to talk to (only the Prelaunch and Rules pages render).
+  const vault = useMemo(() => (config && !config.pending ? new Vault(config) : null), [config]);
   const route = useRoute();
 
   useEffect(() => subscribe(() => bumpVersion()), []);
 
   return (
     <>
-      <Header route={route[0] ?? ''} />
+      <Header route={route[0] ?? ''} pending={!!config?.pending} />
       <main className="container">
         {error && !config && (
           <div className="panel">
@@ -58,9 +60,9 @@ export function App() {
           </div>
         )}
         {!config && !error && <Loading what="Connecting to the ledger" />}
-        {config && vault && (
-          <ConfigContext.Provider value={{ config, vault }}>
-            <Page route={route} />
+        {config && (vault || config.pending) && (
+          <ConfigContext.Provider value={{ config, vault: vault! }}>
+            {config.pending && route[0] !== 'rules' ? <Prelaunch /> : <Page route={route} />}
           </ConfigContext.Provider>
         )}
       </main>
@@ -94,7 +96,7 @@ function Page({ route }: { route: string[] }) {
   }
 }
 
-function Header({ route }: { route: string }) {
+function Header({ route, pending }: { route: string; pending: boolean }) {
   const wallet = useWallet();
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -107,12 +109,14 @@ function Header({ route }: { route: string }) {
         </a>
         <button className="icon-btn nav-toggle" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>☰</button>
         <nav className={open ? 'nav open' : 'nav'} onClick={() => setOpen(false)}>
-          {NAV.map(([path, label]) => (
+          {NAV.filter(([path]) => !pending || path === '' || path === 'rules').map(([path, label]) => (
             <a key={path} href={`#/${path}`} className={route === path ? 'active' : ''}>{label}</a>
           ))}
         </nav>
         <div className="wallet-btn">
-          {wallet.address ? (
+          {pending ? (
+            <span className="pill">Launching soon</span>
+          ) : wallet.address ? (
             <WalletMenu address={wallet.address} onDisconnect={() => wallet.disconnect()} />
           ) : wallet.restoring ? (
             <button className="btn btn-ghost" disabled>Reconnecting…</button>

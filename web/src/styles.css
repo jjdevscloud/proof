@@ -326,3 +326,7 @@ input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent);
 }
 .menu a:hover, .menu button:hover { background: var(--surface-2); text-decoration: none; }
 .menu .danger-text { color: var(--melt); }
+
+/* ---- pre-launch ---- */
+.steps { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; }
+.steps li { padding-left: 4px; }

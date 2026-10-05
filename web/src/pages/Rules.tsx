@@ -15,8 +15,9 @@ export function Rules() {
       <h2>1. Every token has a number</h2>
       <p>
         Tokens are numbered in the order they're bought off the bonding curve. Each block of 1,000,000 is a <strong>Strike</strong>.
-        Some Strikes are rare — Genesis, Double Die and others — and those traits were fixed and committed on-chain before launch,
-        then revealed. Anyone can verify any Strike from its page.
+        Some Strikes are rare. Position-based tiers (Genesis, Key Date) go to the earliest Strikes; random errors (Double Die and
+        others) are assigned after the sale from a public Solana block, so nobody can know them in advance. The rules are
+        committed on-chain before the first buy, and anyone can verify any Strike from its page.
       </p>
 
       <h2>2. Rarity lives in two places only</h2>
@@ -50,8 +51,8 @@ export function Rules() {
 
       <h2>What you can check yourself</h2>
       <ul>
-        <li>The $PROOF mint: <Addr value={config.mint} /></li>
-        <li>The Sequents vault program: <Addr value={config.vaultProgramId} /></li>
+        <li>The $PROOF mint: {config.pending ? <span className="muted">announced at launch</span> : <Addr value={config.mint} />}</li>
+        <li>The Sequents vault program: {config.pending ? <span className="muted">deployed at launch</span> : <Addr value={config.vaultProgramId} />}</li>
         <li>The trait commitment, posted by <Addr value={config.revealAuthority} /> before the first buy</li>
         <li>Every desk listing runs on-chain safety checks in your browser before you can buy</li>
         <li>Two independent indexers publish matching ledger fingerprints (shown in the footer)</li>

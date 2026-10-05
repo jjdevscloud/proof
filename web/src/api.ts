@@ -18,6 +18,7 @@ export type Config = {
   commitRoot: string | null;
   revealHash: string | null;
   revealed: boolean;
+  pending?: boolean; // pre-launch: no token yet
 };
 
 export type Health = { syncedSlot: number; lastSlot: number; fingerprint: string; revealed: boolean };

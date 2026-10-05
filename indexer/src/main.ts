@@ -37,6 +37,14 @@ if (env.PORT) config.port = Number(env.PORT);
 if (env.DATA_DIR) config.dataDir = env.DATA_DIR;
 if (env.REVEAL_FILE) config.revealFile = env.REVEAL_FILE;
 const staticDir = env.STATIC_DIR || undefined;
+
+// Pre-launch: no mint yet. The site is served with the rules, but nothing is indexed.
+const pending = !config.mint || config.mint === 'PENDING';
+
+// The rules shown on the site: the final committed file once it exists, else the template.
+const rulesCandidates = [env.RULES_FILE, 'rules/sequents-v1.json', '../rules/sequents-v1.json', 'rules/sequents-v1.template.json', '../rules/sequents-v1.template.json'];
+const rulesPath = rulesCandidates.find((p) => p && existsSync(p));
+const rulesText = rulesPath ? readFileSync(rulesPath, 'utf8') : undefined;
 mkdirSync(config.dataDir, { recursive: true });
 const snapshotPath = join(config.dataDir, 'snapshot.json');
 const ledgerConfig = {
@@ -104,6 +112,8 @@ const { server, broadcast } = createApi({
   syncedSlot: () => follower.syncedSlot,
   history,
   staticDir,
+  pending,
+  rulesText,
   rpcUrl: env.PUBLIC_RPC_PROXY === 'off' ? undefined : config.rpcUrl,
   publicConfig: {
     mint: config.mint,
@@ -150,4 +160,5 @@ async function loop() {
     if (follower.syncedSlot >= follower.finalizedSlot) await new Promise((r) => setTimeout(r, config.pollMs));
   }
 }
-loop();
+if (pending) console.log('pre-launch mode: no mint configured, indexing is off');
+else loop();
