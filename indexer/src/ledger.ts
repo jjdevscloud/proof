@@ -107,8 +107,12 @@ export class Ledger {
   }
 
   // Strikes fully sold when the seed target slot passed: the only ones that can receive errors.
+  // A Strike is fully sold when all its positions are issued; the short final Strike counts once
+  // the curve has issued every saleable position.
   eligibleStrikes(): number | null {
-    return this.seedCursor === null ? null : Number(this.seedCursor / this.config.strikeSize);
+    if (this.seedCursor === null) return null;
+    if (this.seedCursor >= this.config.saleableSupply) return this.strikeCount;
+    return Number(this.seedCursor / this.config.strikeSize);
   }
 
   // Called once every relevant transaction up to and including `slot` has been applied. If the

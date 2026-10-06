@@ -103,7 +103,7 @@ test('the seed point: deadline, or 150 slots after the curve sells out, whicheve
   assert.equal(c.ledger.seedCursor, null);
   c.tx([]); // first transaction after the target fixes it
   assert.equal(c.ledger.seedFixedAt, 50 + SEED_DELAY_SLOTS);
-  assert.equal(c.ledger.eligibleStrikes(), 793, 'only fully sold Strikes (the short last one is not full)');
+  assert.equal(c.ledger.eligibleStrikes(), 794, 'sold out: every Strike, including the short final one, is eligible');
 
   const quiet = new Chain(); // no transaction after the target: fixed once the indexer has passed it
   quiet.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 5 }]);

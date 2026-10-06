@@ -79,7 +79,8 @@ except *which* Strikes get the random errors:
   the curve buy that issued the last saleable position (if it happens).
 - The ledger fixes the curve cursor as of `T`: at the first applied transaction with slot > `T`,
   or once the indexer has applied every relevant transaction up to a slot > `T`.
-- **Eligible Strikes** = `floor(cursor at T / strike size)` — Strikes fully sold at `T`. Only they
+- **Eligible Strikes** = Strikes fully sold at `T`: `floor(cursor at T / strike size)`, or all 794 if the
+  curve had sold out (the short final Strike is then fully sold too). Only they
   can receive errors, so no one can target a known-rare unsold Strike.
 - **Seed block** = the first produced block at or after slot `T` (slots can be skipped).
 
