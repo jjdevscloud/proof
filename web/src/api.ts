@@ -12,6 +12,8 @@ export type Config = {
   vaultProgramId: string;
   curveTokenAccount: string;
   curveProgramId: string;
+  treasury: string;
+  feeBps: number;
   revealAuthority: string;
   strikeCount: number;
   strikeSize: string;

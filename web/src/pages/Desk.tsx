@@ -4,7 +4,7 @@ import type { Envelope } from '../api.ts';
 import { useConfig, useVault } from '../App.tsx';
 import type { Check } from '../chain.ts';
 import { useWallet } from '../chain.ts';
-import { fmtTokens, short, sol } from '../format.ts';
+import { feeOf, feePct, fmtTokens, short, sol } from '../format.ts';
 import { matches, verifyReveal } from '../verify.ts';
 import { Addr, ErrorNote, Loading, Modal, SegmentList, runTx } from '../components/ui.tsx';
 
@@ -91,6 +91,10 @@ function BuyModal({ envelope, onClose }: { envelope: Envelope; onClose: () => vo
         <span>Price</span>
         <strong className="price">{sol(envelope.price)} SOL</strong>
       </div>
+      <p className="small muted">
+        You pay exactly the price. The seller receives {sol(BigInt(envelope.price) - feeOf(envelope.price, config.feeBps))} SOL;{' '}
+        {sol(feeOf(envelope.price, config.feeBps))} SOL ({feePct(config.feeBps)}) is the Sequents desk fee.
+      </p>
       <p className="small muted">
         Buying makes you the envelope's holder. You can keep it, gift it, list it again, or withdraw the tokens —
         withdrawing melts them into ordinary $PROOF.

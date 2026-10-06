@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { api, useApi } from '../api.ts';
 import type { Envelope, Preview, Segment, WalletView } from '../api.ts';
-import { useVault } from '../App.tsx';
+import { useConfig, useVault } from '../App.tsx';
 import { isAddress, useWallet } from '../chain.ts';
-import { BASE, CLUSTER, fmtTokens, lamportsFromSol, short, sol } from '../format.ts';
+import { BASE, CLUSTER, feeOf, feePct, fmtTokens, lamportsFromSol, short, sol } from '../format.ts';
 import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCoin, Traits, TypedConfirm, runTx } from '../components/ui.tsx';
 
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
@@ -191,6 +191,7 @@ function SellPreview({ account }: { account: string }) {
 
 function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }) {
   const vault = useVault();
+  const config = useConfig();
   const [mode, setMode] = useState<null | 'list' | 'gift' | 'withdraw'>(null);
   const [price, setPrice] = useState('');
   const [to, setTo] = useState('');
@@ -229,7 +230,18 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
             Price in SOL
             <input value={price} onChange={(x) => setPrice(x.target.value)} inputMode="decimal" placeholder="e.g. 1.5" autoFocus />
           </label>
-          <p className="small muted">The envelope stays in the vault. A buyer pays you directly and becomes the holder in the same transaction.</p>
+          <p className="small muted">
+            The envelope stays in the vault. A buyer pays the price and becomes the holder in the same transaction; you receive
+            the price minus the {feePct(config.feeBps)} Sequents desk fee
+            {(() => {
+              try {
+                const l = lamportsFromSol(price);
+                return l > 0n ? <> — <strong>{sol(l - feeOf(l, config.feeBps))} SOL</strong></> : null;
+              } catch {
+                return null;
+              }
+            })()}.
+          </p>
           {err && <ErrorNote error={err} />}
           <button
             className="btn btn-primary wide"

@@ -77,6 +77,8 @@ const config = {
   saleableSupply: (793_100_000n * T).toString(),
   strikeSize: rules.strikeSize,
   revealFile: '/data/reveal.json',
+  treasury: 'hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb',
+  feeBps: 150,
 };
 writeFileSync('../indexer/config.mainnet.json', JSON.stringify(config, null, 2) + '\n');
 console.log(`\nall checks passed; wrote indexer/config.mainnet.json (curve token account ${curveTokens.toBase58()})`);

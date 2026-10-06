@@ -9,10 +9,15 @@
   "mint": "SET_ME",
   "curveTokenAccount": "SET_ME",
   "pumpProgramId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
-  "pumpNonBuyInstructions": ["migrate", "withdraw"],
+  "pumpNonBuyInstructions": [
+    "migrate",
+    "withdraw"
+  ],
   "vaultProgramId": "SET_ME",
   "revealAuthority": "SET_ME",
   "saleableSupply": "793100000000000",
   "strikeSize": "1000000000000",
-  "revealFile": "./reveal.json"
+  "revealFile": "./reveal.json",
+  "treasury": "hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb",
+  "feeBps": 150
 }

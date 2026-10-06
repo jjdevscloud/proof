@@ -273,7 +273,10 @@ export class Vault {
   async buy(buyer: string, holder: string, envelope: string, maxLamports: bigint): Promise<string> {
     return this.send(buyer, [new TransactionInstruction({
       programId: this.programId,
-      keys: [w(new PublicKey(buyer), true), w(new PublicKey(holder)), w(new PublicKey(envelope)), r(SystemProgram.programId)],
+      keys: [
+        w(new PublicKey(buyer), true), w(new PublicKey(holder)), w(new PublicKey(envelope)), r(SystemProgram.programId),
+        w(new PublicKey(this.config.treasury)),
+      ],
       data: concat(await disc('buy'), u64(maxLamports)),
     })]);
   }

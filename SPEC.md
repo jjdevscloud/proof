@@ -157,11 +157,18 @@ Instructions (account order is part of the spec — the indexer decodes by posit
 | `seal(ranges)` | holder★, config, envelope, vault, source, mint, token_program, system_program | Create envelope + vault; transfer `Σ len` from `source` (owned by holder) to vault; status Sealed |
 | `list(price)` | holder★, envelope | Sealed → Listed, price > 0 |
 | `cancel()` | holder★, envelope | Listed → Sealed |
-| `buy(max_price)` | buyer★, holder, envelope, system_program | Listed; `price ≤ max_price`; pay `price` lamports buyer → holder; holder := buyer; → Sealed |
+| `buy(max_price)` | buyer★, holder, envelope, system_program, treasury | Listed; `price ≤ max_price`; buyer pays `price`: `price − fee` to holder, `fee` to the treasury; holder := buyer; → Sealed |
 | `gift(new_holder)` | holder★, envelope | Sealed; holder := new_holder |
 | `withdraw()` | holder★, envelope, vault, destination, mint, token_program | Sealed; send **entire** vault balance to destination; close vault and envelope, rent to holder. **Melts.** |
 
-★ = signer. Program invariants:
+★ = signer.
+
+Desk fee: `fee = floor(price × FEE_BPS / 10,000)` with `FEE_BPS = 150` (1.5%), paid to the fixed
+`TREASURY` (the Squads vault `hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb`); both are constants in the
+program. The treasury account is appended last so earlier account positions are unchanged. It must
+stay rent-exempt (keep ≥ 0.001 SOL in it) or small fees cannot be paid.
+
+Program invariants:
 - `mint` must equal the hard-coded `PROOF_MINT`. Token program may be SPL Token or Token-2022.
 - `seal`: 1–8 ranges, each `len > 0`, sorted and non-overlapping, no overflow; vault balance
   after transfer must equal `Σ len` (rejects transfer-fee mints).
@@ -243,4 +250,4 @@ hook or frozen-by-default state (Token-2022 only).
   instructions.
 - Set `PROOF_MINT` and the program id in the program; set the indexer config.
 - Legal review of the reveal mechanic in target jurisdictions.
-- Desk fee (none in v1). Splitting envelopes (not in v1: withdraw is all-or-nothing).
+- Splitting envelopes (not in v1: withdraw is all-or-nothing).

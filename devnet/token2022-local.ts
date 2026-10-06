@@ -10,7 +10,7 @@ import {
   getAccount, getAssociatedTokenAddressSync, getMint, getMintLen, getExtensionTypes,
 } from '@solana/spl-token';
 import { createInitializeInstruction, pack } from '@solana/spl-token-metadata';
-import { T, connection, disc, envelopePdas, key, programId, u64, vaultConfigPda } from './lib.ts';
+import { T, TREASURY, connection, disc, envelopePdas, feeFor, key, programId, u64, vaultConfigPda } from './lib.ts';
 
 if (!connection.rpcEndpoint.includes('127.0.0.1') && !connection.rpcEndpoint.includes('localhost')) {
   throw new Error('This test creates the PROOF_MINT address; run it only against a local validator (RPC_URL=http://127.0.0.1:8899).');
@@ -28,6 +28,7 @@ const check = (ok: boolean, label: string) => {
 };
 const send = (ixs: any[], signers: Keypair[]) => sendAndConfirmTransaction(connection, new Transaction().add(...ixs), signers, { commitment: 'confirmed' });
 
+await connection.confirmTransaction(await connection.requestAirdrop(TREASURY, LAMPORTS_PER_SOL / 100), 'confirmed');
 for (const kp of [payer, alice, carol]) {
   const sig = await connection.requestAirdrop(kp.publicKey, 10 * LAMPORTS_PER_SOL);
   await connection.confirmTransaction(sig, 'confirmed');
@@ -78,8 +79,11 @@ check((await connection.getAccountInfo(vault))!.owner.equals(TP), 'vault is a To
 const price = LAMPORTS_PER_SOL / 10;
 await send([ix('list', [[alice.publicKey, true, false], [envelope, false, true]], u64(BigInt(price)))], [alice]);
 const aliceSolBefore = await connection.getBalance(alice.publicKey);
-await send([ix('buy', [[carol.publicKey, true, true], [alice.publicKey, false, true], [envelope, false, true], [SystemProgram.programId, false, false]], u64(BigInt(price)))], [carol]);
-check((await connection.getBalance(alice.publicKey)) - aliceSolBefore === price, 'buy paid the seller exactly the listed price');
+const treasuryBefore = await connection.getBalance(TREASURY);
+await send([ix('buy', [[carol.publicKey, true, true], [alice.publicKey, false, true], [envelope, false, true], [SystemProgram.programId, false, false], [TREASURY, false, true]], u64(BigInt(price)))], [carol]);
+const fee = Number(feeFor(BigInt(price)));
+check((await connection.getBalance(alice.publicKey)) - aliceSolBefore === price - fee, `seller received the price minus the 1.5% fee (${(price - fee) / LAMPORTS_PER_SOL} SOL)`);
+check((await connection.getBalance(TREASURY)) - treasuryBefore === fee, `treasury received the fee (${fee / LAMPORTS_PER_SOL} SOL)`);
 
 const carolAta = getAssociatedTokenAddressSync(mint, carol.publicKey, false, TP);
 await send([

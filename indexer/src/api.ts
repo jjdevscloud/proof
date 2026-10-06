@@ -16,6 +16,8 @@ export type PublicConfig = {
   curveTokenAccount: string;
   curveProgramId: string; // pump.fun on mainnet; the mock curve on devnet
   revealAuthority: string;
+  treasury: string; // receives the desk fee (fixed in the vault program)
+  feeBps: number; // desk fee in basis points (150 = 1.5%)
 };
 
 export type ApiState = {

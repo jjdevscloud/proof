@@ -7,7 +7,7 @@ import { LAMPORTS_PER_SOL, SystemProgram } from '@solana/web3.js';
 import { AuthorityType, createMint, getMint, mintTo, setAuthority } from '@solana/spl-token';
 import {
   CLUSTER, DECIMALS, REPO, ROOT, RPC_URL, RULES_PATH, T, connection, curvePdas, initializeCurveIx, key, loadState, memoIx,
-  programId, saveState, send, vaultConfigPda, vaultInitializeIx,
+  TREASURY, programId, saveState, send, vaultConfigPda, vaultInitializeIx,
 } from './lib.ts';
 import { sha256 } from '../indexer/src/reveal.ts';
 
@@ -31,6 +31,11 @@ for (const name of ['reveal', 'alice', 'bob', 'carol', 'dave', 'erin', 'pool'] a
   if ((await connection.getBalance(pk)) < 0.03 * LAMPORTS_PER_SOL) {
     await send([SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: pk, lamports: 0.05 * LAMPORTS_PER_SOL })], [payer], `fund ${name}`);
   }
+}
+
+// The desk-fee treasury must exist (rent-exempt) before small fees can be paid into it.
+if ((await connection.getBalance(TREASURY)) === 0) {
+  await send([SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: TREASURY, lamports: 0.002 * LAMPORTS_PER_SOL })], [payer], 'fund treasury');
 }
 
 // Rules file and commit memo come before the first curve buy (SPEC §4.3). The deadline is short

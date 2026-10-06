@@ -18,6 +18,16 @@ pub const PROOF_MINT: Pubkey = pubkey!("3kUPFSPaWRhnJZGceW2bWVgaR8m93NdtuHzyATrX
 
 pub const MAX_RANGES: usize = 8;
 
+/// Desk fee on every sale, in basis points (150 = 1.5%), paid out of the price to the treasury.
+pub const FEE_BPS: u64 = 150;
+/// Sequents treasury: the Squads multisig vault. Fixed at deploy; changing it needs an upgrade.
+pub const TREASURY: Pubkey = pubkey!("hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb");
+
+/// The treasury's share of a sale price (rounded down); the seller receives the rest.
+pub fn fee_for(price: u64) -> u64 {
+    ((price as u128) * (FEE_BPS as u128) / 10_000) as u64
+}
+
 #[program]
 pub mod proof_vault {
     use super::*;
@@ -86,8 +96,9 @@ pub mod proof_vault {
         Ok(())
     }
 
-    /// Pays the holder and transfers the holder record in one transaction.
-    /// `max_price` protects the buyer if the listing changes before this lands.
+    /// Pays the holder (price minus the desk fee) and the treasury (the fee), and transfers the
+    /// holder record, in one transaction. `max_price` protects the buyer if the listing changes
+    /// before this lands; the buyer always pays exactly the listed price.
     pub fn buy(ctx: Context<Buy>, max_price: u64) -> Result<()> {
         let a = &mut *ctx.accounts;
         require!(a.envelope.status == Status::Listed, VaultError::WrongStatus);
@@ -96,20 +107,30 @@ pub mod proof_vault {
         let price = a.envelope.price;
         require!(price <= max_price, VaultError::PriceChanged);
 
+        let fee = fee_for(price);
         system_program::transfer(
             CpiContext::new(
                 a.system_program.to_account_info(),
                 system_program::Transfer { from: a.buyer.to_account_info(), to: a.holder.to_account_info() },
             ),
-            price,
+            price - fee,
         )?;
+        if fee > 0 {
+            system_program::transfer(
+                CpiContext::new(
+                    a.system_program.to_account_info(),
+                    system_program::Transfer { from: a.buyer.to_account_info(), to: a.treasury.to_account_info() },
+                ),
+                fee,
+            )?;
+        }
 
         let env = &mut a.envelope;
         let seller = env.holder;
         env.holder = a.buyer.key();
         env.status = Status::Sealed;
         env.price = 0;
-        emit!(Sold { envelope: env.key(), seller, buyer: env.holder, price });
+        emit!(Sold { envelope: env.key(), seller, buyer: env.holder, price, fee });
         Ok(())
     }
 
@@ -243,6 +264,9 @@ pub struct Buy<'info> {
     #[account(mut)]
     pub envelope: Account<'info, Envelope>,
     pub system_program: Program<'info, System>,
+    /// Appended last so the earlier account positions (used by the indexer) are unchanged.
+    #[account(mut, address = TREASURY @ VaultError::WrongTreasury)]
+    pub treasury: SystemAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -310,7 +334,7 @@ pub struct Listed { pub envelope: Pubkey, pub price: u64 }
 #[event]
 pub struct Cancelled { pub envelope: Pubkey }
 #[event]
-pub struct Sold { pub envelope: Pubkey, pub seller: Pubkey, pub buyer: Pubkey, pub price: u64 }
+pub struct Sold { pub envelope: Pubkey, pub seller: Pubkey, pub buyer: Pubkey, pub price: u64, pub fee: u64 }
 #[event]
 pub struct Gifted { pub envelope: Pubkey, pub from: Pubkey, pub to: Pubkey }
 #[event]
@@ -342,6 +366,8 @@ pub enum VaultError {
     Overflow,
     #[msg("Vault received a different amount than was sent")]
     AmountMismatch,
+    #[msg("Fee account is not the Sequents treasury")]
+    WrongTreasury,
 }
 
 #[cfg(test)]
@@ -350,6 +376,14 @@ mod tests {
 
     fn r(start: u64, len: u64) -> RangeArg {
         RangeArg { start, len }
+    }
+
+    #[test]
+    fn desk_fee() {
+        assert_eq!(fee_for(1_000_000_000), 15_000_000); // 1 SOL -> 0.015 SOL
+        assert_eq!(fee_for(100), 1);
+        assert_eq!(fee_for(66), 0); // rounds down
+        assert_eq!(fee_for(u64::MAX), ((u64::MAX as u128) * 150 / 10_000) as u64);
     }
 
     #[test]

@@ -20,6 +20,10 @@ export const REVEAL_PATH = join(ROOT, `reveal.${CLUSTER}.json`);
 export const INDEXER_URL = process.env.INDEXER_URL ?? 'http://localhost:8787';
 export const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 export const DECIMALS = 6;
+// Desk fee settings, mirrored from programs/proof-vault (FEE_BPS, TREASURY).
+export const TREASURY = new PublicKey('hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb');
+export const FEE_BPS = 150n;
+export const feeFor = (price: bigint) => (price * FEE_BPS) / 10_000n;
 export const T = 1_000_000n; // base units per token
 
 export const connection = new Connection(RPC_URL, 'confirmed');
@@ -159,10 +163,10 @@ export function listIx(holder: PublicKey, envelope: PublicKey, price: bigint) {
   return new TransactionInstruction({ programId: programId('proof_vault'), keys: [r(holder, true), w(envelope)], data: Buffer.concat([disc('list'), u64(price)]) });
 }
 
-export function buyEnvelopeIx(buyer: PublicKey, holder: PublicKey, envelope: PublicKey, maxPrice: bigint) {
+export function buyEnvelopeIx(buyer: PublicKey, holder: PublicKey, envelope: PublicKey, maxPrice: bigint, treasury: PublicKey = TREASURY) {
   return new TransactionInstruction({
     programId: programId('proof_vault'),
-    keys: [w(buyer, true), w(holder), w(envelope), r(SystemProgram.programId)],
+    keys: [w(buyer, true), w(holder), w(envelope), r(SystemProgram.programId), w(treasury)],
     data: Buffer.concat([disc('buy'), u64(maxPrice)]),
   });
 }

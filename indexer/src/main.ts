@@ -26,6 +26,8 @@ type Config = {
   saleableSupply: string;
   strikeSize: string;
   revealFile?: string;
+  treasury?: string;
+  feeBps?: number;
 };
 
 // Settings come from a JSON file (argv[2]); hosting-specific values can be overridden by
@@ -121,6 +123,8 @@ const { server, broadcast } = createApi({
     vaultProgramId: config.vaultProgramId,
     curveTokenAccount: config.curveTokenAccount,
     curveProgramId: config.pumpProgramId,
+    treasury: config.treasury ?? 'hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb',
+    feeBps: config.feeBps ?? 150,
     revealAuthority: config.revealAuthority,
   },
 });

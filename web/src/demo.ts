@@ -119,6 +119,7 @@ activity.push({ slot: 453_000_000, signature: addr(991), changes: [{ kind: 'comm
 
 const config: Config = {
   mint: addr(1), vaultProgramId: addr(2), curveTokenAccount: addr(3), curveProgramId: addr(4), revealAuthority: addr(5),
+  treasury: addr(6), feeBps: 150,
   strikeCount: 794, strikeSize: STRIKE.toString(), saleableSupply: (793_100_000n * T).toString(),
   commitRoot: 'demo', revealHash: 'ab'.repeat(32), revealed: true, pending: false,
 };

@@ -14,7 +14,7 @@ import {
 // proof_vault error codes (Anchor custom errors start at 6000, in VaultError order).
 const E = {
   WrongMint: 6000, WrongHolder: 6001, WrongVault: 6002, WrongStatus: 6003, ZeroPrice: 6004, PriceChanged: 6005,
-  SelfPurchase: 6006, BadRangeCount: 6007, EmptyRange: 6008, UnsortedRanges: 6009,
+  SelfPurchase: 6006, BadRangeCount: 6007, EmptyRange: 6008, UnsortedRanges: 6009, WrongTreasury: 6012,
   ConstraintTokenMint: 2014, // Anchor built-in: token account has the wrong mint
 } as const;
 
@@ -73,6 +73,7 @@ const cases: Case[] = [
   { name: 'buy an envelope that is not listed', setup: [seal], attack: [buyEnvelopeIx(carol.publicKey, alice.publicKey, envelope, price)], signers: [payer, alice, carol], expect: E.WrongStatus },
   { name: 'seller raises the price before the purchase lands', setup: [seal, list], attack: [buyEnvelopeIx(carol.publicKey, alice.publicKey, envelope, price - 1n)], signers: [payer, alice, carol], expect: E.PriceChanged },
   { name: 'buyer redirects payment to himself', setup: [seal, list], attack: [buyEnvelopeIx(carol.publicKey, carol.publicKey, envelope, price)], signers: [payer, alice, carol], expect: E.WrongHolder },
+  { name: 'buyer sends the desk fee to their own wallet', setup: [seal, list], attack: [buyEnvelopeIx(carol.publicKey, alice.publicKey, envelope, price, carol.publicKey)], signers: [payer, alice, carol], expect: E.WrongTreasury },
   { name: 'seller buys own listing', setup: [seal, list], attack: [buyEnvelopeIx(alice.publicKey, alice.publicKey, envelope, price)], signers: [payer, alice], expect: E.SelfPurchase },
   {
     name: 'withdraw into an account of a different token',

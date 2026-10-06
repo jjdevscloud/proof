@@ -40,7 +40,8 @@ export function Rules() {
       <h2>4. Selling rarity without melting it</h2>
       <p>
         Seal rare tokens into an envelope and list it on the desk. A buyer pays you and becomes the envelope's holder in one
-        transaction — the tokens never move, so nothing melts. The buyer can keep it, gift it, relist it, or withdraw (which melts).
+        transaction — the tokens never move, so nothing melts. The seller receives the price minus a {config.feeBps / 100}% Sequents
+        desk fee. The buyer can keep it, gift it, relist it, or withdraw (which melts).
       </p>
 
       <h2>5. Why the premium can't go below the coin</h2>

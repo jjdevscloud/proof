@@ -49,6 +49,12 @@ export function lamportsFromSol(input: string): bigint {
   return BigInt(m[1]) * 1_000_000_000n + BigInt((m[2] ?? '').padEnd(9, '0'));
 }
 
+// The desk fee (basis points) the seller pays out of a sale price; mirrors fee_for in the program.
+export function feeOf(price: string | bigint, feeBps: number): bigint {
+  return (BigInt(price) * BigInt(feeBps)) / 10_000n;
+}
+export const feePct = (feeBps: number) => `${feeBps / 100}%`;
+
 // Display tier from rank (date points + error points, rules/sequents-v1): 0 common, 1–29 uncommon
 // (Final Strike, Key Date, Die Crack), 30–69 rare (Clipped Planchet, Genesis, Off-Center),
 // 70+ legendary (Wrong Planchet, Double Die, and strong stacks).
