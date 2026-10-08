@@ -2,12 +2,38 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import type { Segment } from '../api.ts';
 import { TIER_NAMES, explorer, fmtRange, fmtTokens, short, tier } from '../format.ts';
+import { TraitIcon, coinCells } from './pixels.tsx';
 
-export function StrikeCoin({ strike, rank, size = 'md' }: { strike: number; rank: number; size?: 'sm' | 'md' | 'lg' }) {
+// One full Strike in base units; segment coins show their share of it.
+const STRIKE_BASE = 1_000_000_000_000n;
+
+// The coin pixels, filled bottom-up in proportion to the share still surviving.
+const COIN_PIXELS = coinCells(7, 5, 0)
+  .map(([x, y]) => [x + 3, y + 2] as const)
+  .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+
+export function StrikeCoin({ strike, rank, size = 'md', part, whole }: {
+  strike: number;
+  rank: number;
+  size?: 'sm' | 'md' | 'lg';
+  part?: string | bigint;
+  whole?: string | bigint;
+}) {
+  const gone = whole !== undefined && BigInt(whole) === 0n;
+  const share = whole === undefined || part === undefined ? 1 : gone ? 0 : Number((BigInt(part) * 1000n) / BigInt(whole)) / 1000;
+  const lit = Math.round(share * COIN_PIXELS.length);
   return (
-    <a className={`coin coin-${size} t${tier(rank)}`} href={`#/strike/${strike}`} title={`Strike #${strike} · ${TIER_NAMES[tier(rank)]}`}>
-      <span className="coin-hash">#</span>
-      {strike}
+    <a
+      className={`coin coin-${size} t${tier(rank)}`}
+      href={`#/strike/${strike}`}
+      title={`Strike #${strike} · ${TIER_NAMES[tier(rank)]}${whole === undefined ? '' : ` · ${Math.round(share * 1000) / 10}% surviving`}`}
+    >
+      <svg className="coin-grid" viewBox="0 0 7 5" aria-hidden shapeRendering="crispEdges">
+        {COIN_PIXELS.map(([x, y], i) => (
+          <rect key={i} className={gone ? 'cc-out' : i < lit ? 'cc-on' : 'cc-off'} x={x + 0.07} y={y + 0.07} width={0.86} height={0.86} />
+        ))}
+      </svg>
+      {size === 'sm' && <span className="coin-num">#{strike}</span>}
     </a>
   );
 }
@@ -17,7 +43,7 @@ export function Traits({ traits, rank }: { traits: string[] | null; rank: number
   return (
     <span className="traits">
       {traits.map((t) => (
-        <span key={t} className={`trait t${tier(rank)}`}>{t}</span>
+        <span key={t} className={`trait t${tier(rank)}`}><TraitIcon trait={t} />{t}</span>
       ))}
     </span>
   );
@@ -30,7 +56,7 @@ export function SegmentList({ segments, empty = 'Nothing rare here.' }: { segmen
     <ul className="segments">
       {segments.map((s) => (
         <li key={s.start}>
-          <StrikeCoin strike={s.strike} rank={s.rank} size="sm" />
+          <StrikeCoin strike={s.strike} rank={s.rank} size="sm" part={BigInt(s.end) - BigInt(s.start)} whole={STRIKE_BASE} />
           <div className="seg-main">
             <Traits traits={s.traits} rank={s.rank} />
             <span className="mono small muted">{fmtRange(s.start, s.end)}</span>
@@ -39,6 +65,16 @@ export function SegmentList({ segments, empty = 'Nothing rare here.' }: { segmen
         </li>
       ))}
     </ul>
+  );
+}
+
+// Collapsible extra text behind a "+" toggle.
+export function More({ children }: { children: ReactNode }) {
+  return (
+    <details className="more">
+      <summary aria-label="More" />
+      {children}
+    </details>
   );
 }
 

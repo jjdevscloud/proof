@@ -6,7 +6,7 @@ import type { Check } from '../chain.ts';
 import { useWallet } from '../chain.ts';
 import { feeOf, feePct, fmtTokens, short, sol } from '../format.ts';
 import { matches, verifyReveal } from '../verify.ts';
-import { Addr, ErrorNote, Loading, Modal, SegmentList, runTx } from '../components/ui.tsx';
+import { Addr, ErrorNote, Loading, Modal, More, SegmentList, runTx } from '../components/ui.tsx';
 
 export function Desk() {
   const { data, error } = useApi<Envelope[]>('/envelopes?status=listed');
@@ -18,10 +18,12 @@ export function Desk() {
       <div className="page-head">
         <div>
           <h1>Collector desk</h1>
-          <p className="muted">
-            Sealed envelopes for sale. You buy the envelope: the tokens never leave the vault, so their rarity stays intact.
-            Every listing is checked against the chain in your browser before you can buy.
-          </p>
+          <More>
+            <p className="muted">
+              Sealed envelopes for sale. You buy the envelope: the tokens never leave the vault, so their rarity stays intact.
+              Every listing is checked against the chain in your browser before you can buy.
+            </p>
+          </More>
         </div>
       </div>
       {error && <ErrorNote error={error} />}

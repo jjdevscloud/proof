@@ -6,7 +6,8 @@ import { TIER_NAMES, explorer, fmtTokens, pct, tier } from '../format.ts';
 import { matches, verifyReveal } from '../verify.ts';
 import type { Verification } from '../verify.ts';
 import { ActivityFeed } from '../components/Activity.tsx';
-import { Addr, Bar, ErrorNote, Loading, StrikeCoin, Traits } from '../components/ui.tsx';
+import { Addr, Bar, ErrorNote, Loading, StrikeCoin } from '../components/ui.tsx';
+import { TraitIcon } from '../components/pixels.tsx';
 
 export function StrikePage({ n }: { n: number }) {
   const config = useConfig();
@@ -21,24 +22,35 @@ export function StrikePage({ n }: { n: number }) {
   const first = BigInt(n) * BigInt(config.strikeSize) / 1_000_000n;
   return (
     <>
-      <nav className="crumbs small"><a href="#/strikes">Strikes</a> / #{n}</nav>
+      <nav className="crumbs small"><a className="back-link" href="#/strikes">← Back to Strikes</a></nav>
       <section className="strike-hero panel">
-        <StrikeCoin strike={n} rank={data.rank} size="lg" />
-        <div>
-          <h1>Strike #{n}</h1>
-          <Traits traits={data.traits} rank={data.rank} />
-          <p className="muted small">
-            {TIER_NAMES[tier(data.rank)]} · rank {data.rank} · tokens #{first.toLocaleString()} – #{(first + BigInt(data.size) / 1_000_000n - 1n).toLocaleString()}
-          </p>
+        <StrikeCoin strike={n} rank={data.rank} size="lg" part={data.surviving} whole={data.issued} />
+        <div className="profile">
+          <div className="profile-name">
+            <h1>Strike #{n}</h1>
+            <span className="profile-icons">
+              {(data.traits ?? []).map((t) => <span key={t} title={t}><TraitIcon trait={t} /></span>)}
+            </span>
+          </div>
+          <dl className="profile-details">
+            <dt>Rarity</dt><dd>{TIER_NAMES[tier(data.rank)]}</dd>
+            <dt>Rank</dt><dd>{data.rank}</dd>
+            <dt>Traits</dt><dd>{data.traits ? data.traits.join(', ') : 'Unrevealed'}</dd>
+            <dt>Tokens</dt><dd>#{first.toLocaleString()} to #{(first + BigInt(data.size) / 1_000_000n - 1n).toLocaleString()}</dd>
+          </dl>
         </div>
-        <div className="strike-hero-stat">
+        <div className="strike-hero-stat profile">
           {issued === 0n ? (
             <p className="muted">Not yet bought off the curve.</p>
           ) : (
             <>
-              <div className="stat-value">{pct(data.surviving, data.issued)}%</div>
-              <div className="stat-sub">{fmtTokens(data.surviving)} of {fmtTokens(data.issued)} surviving</div>
+              <div className="profile-name"><h1>{pct(data.surviving, data.issued)}% surviving</h1></div>
               <Bar value={pct(data.surviving, data.issued)} tierClass={`t${tier(data.rank)}`} />
+              <dl className="profile-details">
+                <dt>Surviving</dt><dd>{fmtTokens(data.surviving)}</dd>
+                <dt>Issued</dt><dd>{fmtTokens(data.issued)}</dd>
+                <dt>Melted</dt><dd>{fmtTokens(BigInt(data.issued) - BigInt(data.surviving))}</dd>
+              </dl>
             </>
           )}
         </div>
@@ -94,11 +106,7 @@ function VerifyPanel({ n, traits }: { n: number; traits: string[] | null }) {
   return (
     <section className="panel verify">
       <h2>Verify these traits</h2>
-      <p className="muted small">
-        The trait rules were committed on-chain before launch. Which Strikes got the random errors comes from a Solana block
-        produced after the sale, so nobody could know in advance. Your browser can recompute everything itself — no trust in
-        this website needed.
-      </p>
+      <p className="muted small verify-line">Your browser can recompute everything itself, no trust in this website needed.</p>
       {!reveal?.revealed ? (
         <SeedStatus reveal={reveal ?? null} />
       ) : (
@@ -108,10 +116,10 @@ function VerifyPanel({ n, traits }: { n: number; traits: string[] | null }) {
           </button>
           {v && (
             <ul className="checks">
-              {[...v.steps, { label: `Strike #${n} is ${traits?.join(' · ') ?? '—'}`, ok: matches(v, n, traits), detail: '' }].map((s) => (
+              {[...v.steps, { label: `Strike #${n} is ${traits?.join(', ') ?? 'unrevealed'}`, ok: matches(v, n, traits), detail: '' }].map((s) => (
                 <li key={s.label} className={s.ok ? 'ok' : 'bad'}>
                   <span aria-hidden>{s.ok ? '✓' : '✗'}</span>
-                  <span>{s.label}{s.detail && <span className="muted small"> · {s.detail}</span>}</span>
+                  <span>{s.label}{s.detail && <span className="muted small">, {s.detail}</span>}</span>
                 </li>
               ))}
             </ul>

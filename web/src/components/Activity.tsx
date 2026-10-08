@@ -9,7 +9,7 @@ function strikesIn(ranges: RangeJson[], strikeSize: bigint): string {
   }
   const list = [...set].sort((a, b) => a - b);
   if (!list.length) return '';
-  return list.length > 3 ? `Strikes #${list[0]}–#${list[list.length - 1]}` : list.map((n) => `#${n}`).join(', ');
+  return list.length > 3 ? `Strikes #${list[0]} to #${list[list.length - 1]}` : list.map((n) => `#${n}`).join(', ');
 }
 
 function total(ranges: RangeJson[]): bigint {
@@ -30,11 +30,11 @@ export function describe(ch: Change, strikeSize: bigint): { icon: string; tone: 
     case 'issue':
       return { icon: '◆', tone: 'issue', text: `${fmtTokens(total(ch.ranges))} minted in Strike ${strikesIn(ch.ranges, strikeSize)} to ${short(ch.account)}` };
     case 'melt':
-      return { icon: '♨', tone: 'melt', text: `${fmtTokens(total(ch.ranges))} of Strike ${strikesIn(ch.ranges, strikeSize)} melted — ${MELT_REASONS[ch.reason] ?? ch.reason}` };
+      return { icon: '♨', tone: 'melt', text: `${fmtTokens(total(ch.ranges))} of Strike ${strikesIn(ch.ranges, strikeSize)} melted, ${MELT_REASONS[ch.reason] ?? ch.reason}` };
     case 'seal':
       return ch.valid
         ? { icon: '▣', tone: 'seal', text: `Strike ${strikesIn(ch.ranges, strikeSize)} sealed into envelope ${short(ch.envelope)}` }
-        : { icon: '▢', tone: 'melt', text: `Invalid seal into ${short(ch.envelope)} — contents are ordinary $PROOF` };
+        : { icon: '▢', tone: 'melt', text: `Invalid seal into ${short(ch.envelope)}, contents are ordinary $PROOF` };
     case 'list':
       return { icon: '⌂', tone: 'desk', text: `Envelope ${short(ch.envelope)} listed for ${sol(ch.price)} SOL` };
     case 'cancel':
