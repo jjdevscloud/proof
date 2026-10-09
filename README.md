@@ -115,7 +115,8 @@ The moment:
 
 The reveal (about a minute after the curve sells out, or at the deadline):
 7. The server builds the reveal file itself from the seed block as soon as it passes the seed point
-   ( in ). Run : it builds
+   (`registered` in `/api/reveal`). Run `node ops/make-reveal.ts --rules ../rules/sequents-v1.json
+   --api https://<site>/api --out reveal.json --rpc <url> --key <reveal-authority.json> --post`: it builds
    the same file, refuses unless the server has registered that exact file, then posts the reveal memo.
 
 The server keeps the launch in `/data/launch.json`. Putting the mint into `indexer/config.mainnet.json`
