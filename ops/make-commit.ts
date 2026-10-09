@@ -48,7 +48,13 @@ if (a.post) {
   console.log(`\nposting as reveal authority ${key.publicKey.toBase58()} ...`);
   const { signature, slot } = await postMemo(conn, key, memo);
   console.log(`commit memo finalized in slot ${slot}: ${signature}`);
-  console.log('Publish the rules file now. Create the token on pump.fun only after this point.');
+  // The indexer starts from just before the commit; record it in the mainnet config for the deploy.
+  const configPath = '../indexer/config.mainnet.json';
+  const indexerConfig = JSON.parse(readFileSync(configPath, 'utf8'));
+  indexerConfig.startSlot = now - 1;
+  writeFileSync(configPath, JSON.stringify(indexerConfig, null, 2) + '\n');
+  console.log(`wrote startSlot ${now - 1} to indexer/config.mainnet.json`);
+  console.log('Commit and deploy the site now (rules file + config). Create the token on pump.fun only after this point.');
 } else {
   console.log('\n(dry run: add --key <file> --post to post the memo)');
 }

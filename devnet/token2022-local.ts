@@ -1,7 +1,6 @@
 // Runs the vault's full flow against a Token-2022 mint shaped exactly like a real pump.fun token
 // (decimals 6, metadataPointer + tokenMetadata extensions, mint and freeze authority revoked),
-// on a LOCAL validator. The mint is created at the devnet mint address that PROOF_MINT points to,
-// so the exact deployed program binary is tested.
+// on a LOCAL validator, with the program built for devnet (the devnet payer is the launch authority).
 // Usage: RPC_URL=http://127.0.0.1:8899 node token2022-local.ts
 import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import {
@@ -13,7 +12,7 @@ import { createInitializeInstruction, pack } from '@solana/spl-token-metadata';
 import { T, TREASURY, connection, disc, envelopePdas, feeFor, key, programId, u64, vaultConfigPda } from './lib.ts';
 
 if (!connection.rpcEndpoint.includes('127.0.0.1') && !connection.rpcEndpoint.includes('localhost')) {
-  throw new Error('This test creates the PROOF_MINT address; run it only against a local validator (RPC_URL=http://127.0.0.1:8899).');
+  throw new Error('This test creates the devnet mint address; run it only against a local validator (RPC_URL=http://127.0.0.1:8899).');
 }
 
 const TP = TOKEN_2022_PROGRAM_ID;
@@ -46,9 +45,13 @@ await send([
   createInitializeInstruction({ programId: TP, metadata: mint, updateAuthority: payer.publicKey, mint, mintAuthority: payer.publicKey, name: metadata.name, symbol: metadata.symbol, uri: metadata.uri }),
 ], [payer, mintKp]);
 const aliceAta = getAssociatedTokenAddressSync(mint, alice.publicKey, false, TP);
+const payerAta = getAssociatedTokenAddressSync(mint, payer.publicKey, false, TP);
 await send([
   createAssociatedTokenAccountIdempotentInstruction(payer.publicKey, aliceAta, alice.publicKey, mint, TP),
   createMintToInstruction(mint, aliceAta, payer.publicKey, 2_000_000n * T, [], TP),
+  // The rest of the fixed 1,000,000,000 supply, like a pump.fun token.
+  createAssociatedTokenAccountIdempotentInstruction(payer.publicKey, payerAta, payer.publicKey, mint, TP),
+  createMintToInstruction(mint, payerAta, payer.publicKey, 998_000_000n * T, [], TP),
   createSetAuthorityInstruction(mint, payer.publicKey, AuthorityType.MintTokens, null, [], TP),
 ], [payer]);
 const mintInfo = await getMint(connection, mint, 'confirmed', TP);
@@ -63,13 +66,17 @@ const ix = (name: string, keys: [PublicKey, boolean, boolean][], data: Buffer = 
   data: Buffer.concat([disc(name), data]),
 });
 await send([ix('initialize', [[payer.publicKey, true, true], [vaultConfigPda(), false, true], [SystemProgram.programId, false, false]])], [payer]);
+const mintRecord = PublicKey.findProgramAddressSync([Buffer.from('mint')], vaultProgram)[0];
+// The curve account is only recorded for indexers; any address will do here.
+await send([ix('set_mint', [[payer.publicKey, true, true], [mintRecord, false, true], [mint, false, false], [SystemProgram.programId, false, false]], aliceAta.toBuffer())], [payer]);
+check((await connection.getAccountInfo(mintRecord))!.data.subarray(8, 40).equals(mint.toBuffer()), 'set_mint recorded the Token-2022 mint');
 
 const id = 0n;
 const { envelope, vault } = envelopePdas(id);
 const sealData = Buffer.concat([Buffer.from([1, 0, 0, 0]), u64(1_000_000n * T), u64(1_000_000n * T)]);
 await send([ix('seal', [
   [alice.publicKey, true, true], [vaultConfigPda(), false, true], [envelope, false, true], [vault, false, true],
-  [aliceAta, false, true], [mint, false, false], [TP, false, false], [SystemProgram.programId, false, false],
+  [aliceAta, false, true], [mint, false, false], [TP, false, false], [SystemProgram.programId, false, false], [mintRecord, false, false],
 ], sealData)], [alice]);
 const vaultAcct = await getAccount(connection, vault, 'confirmed', TP);
 check(vaultAcct.amount === 1_000_000n * T, 'seal moved exactly 1,000,000 tokens into a Token-2022 vault');

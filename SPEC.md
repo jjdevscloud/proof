@@ -169,7 +169,11 @@ program. The treasury account is appended last so earlier account positions are 
 stay rent-exempt (keep ≥ 0.001 SOL in it) or small fees cannot be paid.
 
 Program invariants:
-- `mint` must equal the hard-coded `PROOF_MINT`. Token program may be SPL Token or Token-2022.
+- `mint` must equal the mint recorded by `set_mint` (PDA `["mint"]`). `set_mint` runs once, signed
+  by the hard-coded `LAUNCH_AUTHORITY`, and only accepts a mint with 6 decimals, a supply of
+  1,000,000,000 and no mint or freeze authority. It also records the pump.fun curve token account
+  for indexers. Token program may be SPL Token or Token-2022. `seal` takes the mint record as its
+  last account; `withdraw` relies on the vault's own mint (fixed at seal time).
 - `seal`: 1–8 ranges, each `len > 0`, sorted and non-overlapping, no overflow; vault balance
   after transfer must equal `Σ len` (rejects transfer-fee mints).
 - **The only instruction that moves tokens out of a vault is `withdraw`.** Sales move the
@@ -248,6 +252,6 @@ hook or frozen-by-default state (Token-2022 only).
   `tokenMetadata` only (passes §9.2). The vault's full flow is tested against such a mint.
 - Re-run `devnet/pump-check.ts` against mainnet shortly before launch to catch new pump.fun
   instructions.
-- Set `PROOF_MINT` and the program id in the program; set the indexer config.
+- Deploy the program before launch; record the mint with `ops/launch.ts` the moment the token exists.
 - Legal review of the reveal mechanic in target jurisdictions.
 - Splitting envelopes (not in v1: withdraw is all-or-nothing).

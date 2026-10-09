@@ -142,6 +142,19 @@ export function envelopePdas(id: bigint) {
   return { envelope, vault };
 }
 
+// The one-time record of the $PROOF mint (and its curve token account), written by set_mint.
+export function mintRecordPda(): PublicKey {
+  return PublicKey.findProgramAddressSync([Buffer.from('mint')], programId('proof_vault'))[0];
+}
+
+export function setMintIx(authority: PublicKey, mint: PublicKey, curveTokenAccount: PublicKey) {
+  return new TransactionInstruction({
+    programId: programId('proof_vault'),
+    keys: [w(authority, true), w(mintRecordPda()), r(mint), r(SystemProgram.programId)],
+    data: Buffer.concat([disc('set_mint'), curveTokenAccount.toBuffer()]),
+  });
+}
+
 export function vaultInitializeIx(payer: PublicKey) {
   return new TransactionInstruction({
     programId: programId('proof_vault'),
@@ -154,7 +167,7 @@ export function sealIx(holder: PublicKey, id: bigint, source: PublicKey, mint: P
   const { envelope, vault } = envelopePdas(id);
   return new TransactionInstruction({
     programId: programId('proof_vault'),
-    keys: [w(holder, true), w(vaultConfigPda()), w(envelope), w(vault), w(source), r(mint), r(TOKEN_PROGRAM_ID), r(SystemProgram.programId)],
+    keys: [w(holder, true), w(vaultConfigPda()), w(envelope), w(vault), w(source), r(mint), r(TOKEN_PROGRAM_ID), r(SystemProgram.programId), r(mintRecordPda())],
     data: Buffer.concat([disc('seal'), u32(ranges.length), ...ranges.flatMap((x) => [u64(x.start), u64(x.len)])]),
   });
 }

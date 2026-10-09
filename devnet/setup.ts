@@ -7,7 +7,7 @@ import { LAMPORTS_PER_SOL, SystemProgram } from '@solana/web3.js';
 import { AuthorityType, createMint, getMint, mintTo, setAuthority } from '@solana/spl-token';
 import {
   CLUSTER, DECIMALS, REPO, ROOT, RPC_URL, RULES_PATH, T, connection, curvePdas, initializeCurveIx, key, loadState, memoIx,
-  TREASURY, programId, saveState, send, vaultConfigPda, vaultInitializeIx,
+  TREASURY, mintRecordPda, programId, saveState, send, setMintIx, vaultConfigPda, vaultInitializeIx,
 } from './lib.ts';
 import { sha256 } from '../indexer/src/reveal.ts';
 
@@ -71,6 +71,10 @@ if (mintInfo.mintAuthority) {
 
 if (!(await connection.getAccountInfo(vaultConfigPda()))) {
   await send([vaultInitializeIx(payer.publicKey)], [payer], 'initialize vault config');
+}
+// Launch step: record the mint (the devnet payer is the launch authority in devnet builds).
+if (!(await connection.getAccountInfo(mintRecordPda()))) {
+  await send([setMintIx(payer.publicKey, mint, curveTokens)], [payer], 'record the mint in the vault');
 }
 
 const indexerConfig = {

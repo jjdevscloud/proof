@@ -2,7 +2,8 @@
 //!
 //! Guarantees enforced here:
 //! - Envelopes and their vaults are PDAs of this program: no private keys, no account extensions.
-//! - Only the $PROOF mint is accepted.
+//! - Only the $PROOF mint is accepted. It is recorded once, by the launch authority, right after
+//!   the token is created (`set_mint`), so the program can be deployed before the token exists.
 //! - The only instruction that moves tokens out of a vault is `withdraw` (which melts, per the
 //!   indexer rules). Sales and gifts change the holder record; the tokens never move.
 //!
@@ -12,9 +13,18 @@ use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use anchor_spl::token_interface::{self, CloseAccount, Mint, TokenAccount, TokenInterface, TransferChecked};
 
-// Placeholder ids. Replace both before deploying (SPEC §11).
 declare_id!("7wGSg7XW8KGGHF772PUoNnGKAKWSCFuRu3tdsLXEY62D");
-pub const PROOF_MINT: Pubkey = pubkey!("3kUPFSPaWRhnJZGceW2bWVgaR8m93NdtuHzyATrXD4j5");
+
+/// The only key that may record the $PROOF mint (once). Mainnet: the deployer wallet.
+#[cfg(not(feature = "devnet"))]
+pub const LAUNCH_AUTHORITY: Pubkey = pubkey!("7gJJ8b35yPcpvr9e4autfRQ8GUHmD7mLbsWzMqEMna8E");
+/// Devnet and local tests: the devnet payer.
+#[cfg(feature = "devnet")]
+pub const LAUNCH_AUTHORITY: Pubkey = pubkey!("HBNTv3zfEY8x6vWnELA6LQcMkFjwgQBSr41yfMbnhUQj");
+
+/// $PROOF has 6 decimals and a fixed supply of 1,000,000,000 tokens.
+pub const PROOF_DECIMALS: u8 = 6;
+pub const PROOF_SUPPLY: u64 = 1_000_000_000 * 1_000_000;
 
 pub const MAX_RANGES: usize = 8;
 
@@ -36,6 +46,26 @@ pub mod proof_vault {
         let config = &mut ctx.accounts.config;
         config.next_id = 0;
         config.bump = ctx.bumps.config;
+        Ok(())
+    }
+
+    /// Records the $PROOF mint and its pump.fun curve token account. Callable once, only by the
+    /// launch authority; the mint must already be fixed-supply with no mint or freeze authority.
+    /// The curve account is recorded for indexers; this program does not use it.
+    pub fn set_mint(ctx: Context<SetMint>, curve_token_account: Pubkey) -> Result<()> {
+        let mint = &ctx.accounts.mint;
+        require!(
+            mint.decimals == PROOF_DECIMALS
+                && mint.supply == PROOF_SUPPLY
+                && mint.mint_authority.is_none()
+                && mint.freeze_authority.is_none(),
+            VaultError::BadMint
+        );
+        let record = &mut ctx.accounts.mint_record;
+        record.mint = mint.key();
+        record.curve_token_account = curve_token_account;
+        record.bump = ctx.bumps.mint_record;
+        emit!(MintSet { mint: record.mint, curve_token_account });
         Ok(())
     }
 
@@ -214,6 +244,16 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct SetMint<'info> {
+    #[account(mut, address = LAUNCH_AUTHORITY @ VaultError::NotLaunchAuthority)]
+    pub authority: Signer<'info>,
+    #[account(init, payer = authority, space = 8 + MintRecord::INIT_SPACE, seeds = [b"mint"], bump)]
+    pub mint_record: Account<'info, MintRecord>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub system_program: Program<'info, System>,
+}
+
 // Account order is part of the spec (SPEC §7): the indexer decodes by position.
 #[derive(Accounts)]
 pub struct Seal<'info> {
@@ -241,10 +281,13 @@ pub struct Seal<'info> {
     pub vault: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, token::mint = mint, token::authority = holder, token::token_program = token_program)]
     pub source: InterfaceAccount<'info, TokenAccount>,
-    #[account(address = PROOF_MINT @ VaultError::WrongMint, mint::token_program = token_program)]
+    #[account(mint::token_program = token_program)]
     pub mint: InterfaceAccount<'info, Mint>,
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
+    /// Appended last so the earlier account positions (used by the indexer) are unchanged.
+    #[account(seeds = [b"mint"], bump = mint_record.bump, constraint = mint_record.mint == mint.key() @ VaultError::WrongMint)]
+    pub mint_record: Account<'info, MintRecord>,
 }
 
 #[derive(Accounts)]
@@ -284,7 +327,8 @@ pub struct Withdraw<'info> {
     pub vault: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, token::mint = mint, token::token_program = token_program)]
     pub destination: InterfaceAccount<'info, TokenAccount>,
-    #[account(address = PROOF_MINT @ VaultError::WrongMint, mint::token_program = token_program)]
+    /// Must be the vault's mint (checked above), which `seal` only ever creates for $PROOF.
+    #[account(mint::token_program = token_program)]
     pub mint: InterfaceAccount<'info, Mint>,
     pub token_program: Interface<'info, TokenInterface>,
 }
@@ -295,6 +339,14 @@ pub struct Withdraw<'info> {
 #[derive(InitSpace)]
 pub struct Config {
     pub next_id: u64,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct MintRecord {
+    pub mint: Pubkey,
+    pub curve_token_account: Pubkey,
     pub bump: u8,
 }
 
@@ -338,6 +390,9 @@ pub struct Sold { pub envelope: Pubkey, pub seller: Pubkey, pub buyer: Pubkey, p
 #[event]
 pub struct Gifted { pub envelope: Pubkey, pub from: Pubkey, pub to: Pubkey }
 #[event]
+pub struct MintSet { pub mint: Pubkey, pub curve_token_account: Pubkey }
+
+#[event]
 pub struct Withdrawn { pub envelope: Pubkey, pub holder: Pubkey, pub amount: u64 }
 
 #[error_code]
@@ -368,6 +423,10 @@ pub enum VaultError {
     AmountMismatch,
     #[msg("Fee account is not the Sequents treasury")]
     WrongTreasury,
+    #[msg("Only the launch authority can record the mint")]
+    NotLaunchAuthority,
+    #[msg("Mint must have 6 decimals, a supply of 1,000,000,000 and no mint or freeze authority")]
+    BadMint,
 }
 
 #[cfg(test)]

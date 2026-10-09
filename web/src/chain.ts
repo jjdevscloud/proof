@@ -218,6 +218,10 @@ export class Vault {
   configPda(): PublicKey {
     return PublicKey.findProgramAddressSync([Buffer.from('config')], this.programId)[0];
   }
+  mintRecordPda() {
+    return PublicKey.findProgramAddressSync([Buffer.from('mint')], this.programId)[0];
+  }
+
   envelopePda(id: bigint): PublicKey {
     return PublicKey.findProgramAddressSync([Buffer.from('envelope'), Buffer.from(u64(id))], this.programId)[0];
   }
@@ -245,7 +249,7 @@ export class Vault {
       programId: this.programId,
       keys: [
         w(new PublicKey(holder), true), w(this.configPda()), w(envelope), w(this.vaultPda(envelope)),
-        w(new PublicKey(source)), r(this.mint), r(tokenProgram), r(SystemProgram.programId),
+        w(new PublicKey(source)), r(this.mint), r(tokenProgram), r(SystemProgram.programId), r(this.mintRecordPda()),
       ],
       data,
     })]);

@@ -53,13 +53,20 @@ const NAV = [
 ] as const;
 
 export function App() {
-  const { data: config, error } = useApi<Config>('/config');
+  const { data: config, error, reload } = useApi<Config>('/config');
   // Pre-launch there is no mint, so no vault to talk to: only the Overview and Rules pages render;
   // every other route shows the Prelaunch page.
   const vault = useMemo(() => (config && !config.pending ? new Vault(config) : null), [config]);
   const route = useRoute();
 
   useEffect(() => subscribe(() => bumpVersion()), []);
+  // Pre-launch, check every few seconds: the moment the mint is recorded the site switches to live
+  // in place, without visitors reloading.
+  useEffect(() => {
+    if (!config?.pending) return;
+    const t = setInterval(reload, 3000);
+    return () => clearInterval(t);
+  }, [config?.pending, reload]);
 
   return (
     <>

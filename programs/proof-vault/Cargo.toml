@@ -10,6 +10,8 @@ name = "proof_vault"
 
 [features]
 default = []
+# Launch authority = the devnet payer (devnet and local tests). Mainnet builds omit it.
+devnet = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
