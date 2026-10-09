@@ -112,6 +112,10 @@ export class Ledger {
     this.registered.set(fileHash, data);
   }
 
+  registeredReveals(): string[] {
+    return [...this.registered.keys()];
+  }
+
   // min(completion + SEED_DELAY_SLOTS, deadline); null before the commit.
   seedTarget(): number | null {
     if (this.deadlineSlot === null) return null;

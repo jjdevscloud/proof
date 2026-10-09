@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { deriveTraits, parseRules } from '../indexer/src/derive.ts';
-import { parseReveal } from '../indexer/src/reveal.ts';
+import { buildRevealBytes, parseReveal } from '../indexer/src/reveal.ts';
 import { args, connection, firstBlockFrom, loadKey, need, postMemo } from './common.ts';
 
 const a = args();
@@ -24,17 +24,8 @@ if (status.revealed) throw new Error('already revealed');
 if (!status.seedFixed) throw new Error(`seed point not reached yet: target slot ${status.seedTargetSlot}; the indexer must pass it first`);
 
 const seed = await firstBlockFrom(conn, status.seedTargetSlot);
-const data = {
-  version: 1 as const,
-  rules: rulesText,
-  seedTargetSlot: status.seedTargetSlot as number,
-  seedSlot: seed.slot,
-  blockhash: seed.blockhash,
-  eligibleStrikes: status.eligibleStrikes as number,
-  strikes: deriveTraits(rules, seed.blockhash, status.eligibleStrikes),
-};
-const bytes = Buffer.from(JSON.stringify(data));
-const { fileHash } = parseReveal(bytes); // same checks the indexer runs
+const bytes = buildRevealBytes(rulesText, status.seedTargetSlot, seed.slot, seed.blockhash, status.eligibleStrikes);
+const { data, fileHash } = parseReveal(bytes); // same checks the indexer runs
 const out = need(a, 'out');
 writeFileSync(out, bytes);
 const memo = `proof:v1:reveal:${fileHash}`;
@@ -49,10 +40,15 @@ for (const e of rules.errors) {
 console.log(`reveal file        ${out} (sha256 ${fileHash})`);
 console.log(`memo               ${memo}`);
 
+// The memo is only safe once the indexer has registered this exact file (it builds it itself from the
+// same public data). A memo for a file the indexer does not have would halt it.
+const registered: string[] = status.registered ?? [];
+console.log(`indexer has it     ${registered.includes(fileHash) ? 'yes' : `NO (registered: ${registered.join(', ') || 'none yet'})`}`);
 if (a.post) {
+  if (!registered.includes(fileHash)) throw new Error('the indexer has not registered this reveal file yet; wait a few seconds and retry');
   const key = loadKey(need(a, 'key'));
   const { signature, slot } = await postMemo(conn, key, memo);
   console.log(`reveal memo finalized in slot ${slot}: ${signature}`);
 } else {
-  console.log('\n(dry run: copy the file to the indexer\'s revealFile path, then add --key <file> --post)');
+  console.log('\n(dry run: add --key <reveal-authority.json> --post to post the memo)');
 }

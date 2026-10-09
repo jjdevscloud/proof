@@ -152,6 +152,7 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
             eligibleStrikes: l.eligibleStrikes(),
             revealed: !!l.reveal,
             revealHash: l.revealHash,
+            registered: l.registeredReveals(), // reveal files this indexer would accept
           };
           if (!l.reveal) return send(200, status);
           const { rules, seedSlot, blockhash } = l.reveal;

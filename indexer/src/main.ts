@@ -8,7 +8,7 @@ import { Follower } from './follower.ts';
 import { Rpc } from './rpc.ts';
 import { createApi, json } from './api.ts';
 import type { ApiState } from './api.ts';
-import { parseReveal } from './reveal.ts';
+import { buildRevealBytes, parseReveal, sha256 } from './reveal.ts';
 import { checkLaunch, findMintRecord } from './launch.ts';
 import { parseRules } from './derive.ts';
 
@@ -85,7 +85,9 @@ const rpc = new Rpc(config.rpcUrl);
 // registered; if its reveal memo is posted anyway, the ledger halts (SPEC §4.4).
 let registeredReveal: string | null = null;
 async function registerRevealFile() {
-  if (!config.revealFile || ledger.reveal || !existsSync(config.revealFile)) return;
+  if (ledger.reveal) return;
+  await buildRevealFromChain();
+  if (!config.revealFile || !existsSync(config.revealFile)) return;
   const bytes = readFileSync(config.revealFile);
   const { data, fileHash } = parseReveal(bytes);
   if (registeredReveal === fileHash) return;
@@ -97,6 +99,21 @@ async function registerRevealFile() {
   ledger.registerReveal(data, fileHash);
   registeredReveal = fileHash;
   console.log(`reveal file registered: ${fileHash}`);
+}
+
+// Once the seed point is fixed, the reveal file follows from public data alone (the committed rules,
+// the seed block, the number of fully sold Strikes): build and register it, so the reveal memo can
+// be posted right away with no file to upload. ops/make-reveal.ts builds the identical file.
+async function buildRevealFromChain() {
+  if (registeredReveal || !rulesText || ledger.seedFixedAt === null || ledger.commitRoot !== sha256(rulesText).toString('hex')) return;
+  const first = await rpc.firstBlockFrom(ledger.seedFixedAt);
+  if (!first) return;
+  const bytes = buildRevealBytes(rulesText, ledger.seedFixedAt, first.slot, first.blockhash, ledger.eligibleStrikes()!);
+  const { data, fileHash } = parseReveal(bytes);
+  ledger.registerReveal(data, fileHash);
+  registeredReveal = fileHash;
+  writeFileSync(join(config.dataDir, 'reveal-built.json'), bytes);
+  console.log(`reveal file built from the seed block (slot ${first.slot}) and registered: ${fileHash}`);
 }
 
 let follower: Follower | null = null;

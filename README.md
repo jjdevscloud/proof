@@ -113,5 +113,10 @@ The moment:
    (`set_mint`); the server re-checks it and goes live, and open pages switch without a reload.
    If `launch.ts` was not running, run it with `--mint <mint>` instead.
 
+The reveal (about a minute after the curve sells out, or at the deadline):
+7. The server builds the reveal file itself from the seed block as soon as it passes the seed point
+   ( in ). Run : it builds
+   the same file, refuses unless the server has registered that exact file, then posts the reveal memo.
+
 The server keeps the launch in `/data/launch.json`. Putting the mint into `indexer/config.mainnet.json`
 later is optional.

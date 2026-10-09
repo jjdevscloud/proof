@@ -2,7 +2,7 @@
 // off the curve at once, then a quarter send tokens with transferChecked (names the mint), a quarter
 // with a plain transfer (does not name the mint), a quarter sell back. Every wallet's rare amount is
 // then checked against the rules, and how long the indexer takes to catch up is measured.
-// Usage: RPC_URL=http://127.0.0.1:8899 node rush-local.ts [wallets=200]
+// Usage: RPC_URL=http://127.0.0.1:8899 [SELLOUT=1] node rush-local.ts [wallets=200]
 import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import {
   createAssociatedTokenAccountIdempotentInstruction, createTransferCheckedInstruction, createTransferInstruction, getAssociatedTokenAddressSync,
@@ -55,7 +55,12 @@ for (let i = 0; i < N; i += 20) {
 console.log(`  funded ${N} wallets`);
 
 // The rush: everyone buys a random amount at once.
-const bought = wallets.map(() => BigInt(200_000 + Math.floor(Math.random() * 800_000)) * T);
+// SELLOUT=1: the wallets buy exactly what the curve has left, so it completes (seed point = completion + 150 slots).
+let bought = wallets.map(() => BigInt(200_000 + Math.floor(Math.random() * 800_000)) * T);
+if (process.env.SELLOUT) {
+  const left = 793_100_000n * T - BigInt((await (await fetch(`${INDEXER_URL}/stats`)).json() as any).issued);
+  bought = wallets.map((_, i) => left / BigInt(N) + (i === N - 1 ? left % BigInt(N) : 0n));
+}
 let t0 = Date.now();
 await pool(wallets, async (w, i) => {
   await send(new Transaction().add(
