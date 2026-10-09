@@ -9,9 +9,6 @@ import { Confetti, RollAgain, RollPanel } from '../components/Roll.tsx';
 import { EnvelopeDetails, EnvelopePic } from './Desk.tsx';
 import { VerifyBox } from '../components/Closer.tsx';
 
-// While the reveal is being reviewed, show it on every connect (true). Once approved: false, first connect only.
-const REVEAL_EVERY_TIME = true;
-
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
   const wallet = useWallet();
   const address = routeAddress ?? wallet.address;
@@ -32,23 +29,16 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
     };
   }, [vault, own, address, data]);
 
-  // The reveal: the first time a wallet connects, everything it holds is revealed one by one. After that,
-  // only what is new since the last visit. What has been seen is kept in this browser only (display only).
-  const [reveal, setReveal] = useState<{ strikes: Segment[]; first: boolean } | null>(null);
+  // The reveal: every time a wallet connects, its Strikes are revealed one by one (display only).
+  const [reveal, setReveal] = useState<Segment[] | null>(null);
   const revealChecked = useRef<string | null>(null);
   useEffect(() => {
-    if (!own || !address || !data || revealChecked.current === address) return;
+    if (!address) { revealChecked.current = null; return; } // disconnected: the next connect reveals again
+    if (!own || !data || revealChecked.current === address) return;
     revealChecked.current = address;
-    const key = `sequents-seen:${address}`;
-    let seen: string[] | null = null;
-    try { seen = JSON.parse(localStorage.getItem(key) ?? 'null'); } catch { seen = null; }
-    // PREVIEW: while Harriet reviews the reveal it plays on every connect. Set REVEAL_EVERY_TIME to false once approved.
-    if (REVEAL_EVERY_TIME) seen = null;
+    // Only Strikes are revealed: they are what was bought off the curve. Envelopes are on the wallet page.
     const strikes = data.accounts.flatMap((a) => a.segments);
-    const newStrikes = seen ? strikes.filter((x) => !seen!.includes(`s${x.start}`)) : strikes;
-    // Only Strikes are revealed: on a first connect they are what you bought off the curve. Envelopes come later.
-    try { localStorage.setItem(key, JSON.stringify(strikes.map((x) => `s${x.start}`))); } catch { /* private mode: no memory, no harm */ }
-    if (newStrikes.length) setReveal({ strikes: newStrikes, first: !seen });
+    if (strikes.length) setReveal(strikes);
   }, [own, address, data]);
 
   if (!address && wallet.restoring) return <Loading what="Reconnecting your wallet" />;
@@ -87,7 +77,7 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
   const rareTokens = (data?.accounts ?? []).reduce((n, a) => n + a.segments.reduce((t, x) => t + BigInt(x.end) - BigInt(x.start), 0n), 0n);
   return (
     <>
-      {reveal && <Reveal {...reveal} onDone={() => setReveal(null)} />}
+      {reveal && <Reveal strikes={reveal} onDone={() => setReveal(null)} />}
       <div className="page-head">
         <div>
           <h1>{own ? 'My wallet' : 'Wallet'}</h1>
@@ -458,7 +448,7 @@ function EnvelopeHead({ e }: { e: Envelope }) {
 // The reveal pop-up: a white pop-up edged with the moving four colour border, each Strike pops in as a square card one after another,
 // least rare first, with a little shake; the rarest lands last in the moving frame. Once all are out it holds a
 // stays open until See my wallet is clicked (Skip shows them all at once). Display only.
-function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean; onDone: () => void }) {
+function Reveal({ strikes, onDone }: { strikes: Segment[]; onDone: () => void }) {
   const items = [...strikes].sort((a, b) => a.rank - b.rank);
   const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [shown, setShown] = useState(still ? items.length : 0);
@@ -475,8 +465,8 @@ function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean
         {/* DRAFT wording, awaiting Harriet's approval. */}
         <div className="reveal-head">
           <div>
-            <h2>{first ? 'See what you got' : 'New since your last visit'}</h2>
-            <p className="muted list-sub">{first ? 'Your Strikes from the curve, least rare first.' : 'Strikes added since you were last here.'}</p>
+            <h2>See what you got</h2>
+            <p className="muted list-sub">Your Strikes from the curve, least rare first.</p>
           </div>
           <span className="reveal-head-right">
             <span className="muted">{Math.min(shown, items.length)} of {items.length}</span>
