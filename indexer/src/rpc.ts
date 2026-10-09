@@ -52,6 +52,17 @@ export class Rpc {
     ]);
   }
 
+  // Token balance and owner of up to 100 token accounts (null where an account does not exist).
+  async multipleTokenAccounts(addresses: string[]): Promise<({ amount: bigint; owner: string } | null)[]> {
+    const res = await this.call<{ value: ({ data: any } | null)[] }>('getMultipleAccounts', [
+      addresses, { encoding: 'jsonParsed', commitment: 'finalized' },
+    ]);
+    return res.value.map((a) => {
+      const info = a?.data?.parsed?.info;
+      return info?.tokenAmount ? { amount: BigInt(info.tokenAmount.amount), owner: info.owner } : null;
+    });
+  }
+
   // The first produced block at or after `slot` (slots can be skipped), with its hash.
   async firstBlockFrom(slot: number): Promise<{ slot: number; blockhash: string } | null> {
     const slots = await this.call<number[]>('getBlocks', [slot, slot + 500, { commitment: 'finalized' }]);
