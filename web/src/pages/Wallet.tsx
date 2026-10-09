@@ -455,29 +455,30 @@ function EnvelopeHead({ e }: { e: Envelope }) {
   );
 }
 
-// The reveal pop-up: on a gradient of the rarity colours, each Strike pops in as a square card one after another,
+// The reveal pop-up: a white pop-up edged with the moving four colour border, each Strike pops in as a square card one after another,
 // least rare first, with a little shake; the rarest lands last in the moving frame. Once all are out it holds a
-// moment and closes by itself (or Skip / See my wallet). Display only.
+// stays open until See my wallet is clicked (Skip shows them all at once). Display only.
 function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean; onDone: () => void }) {
   const items = [...strikes].sort((a, b) => a.rank - b.rank);
   const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [shown, setShown] = useState(still ? items.length : 0);
   const done = shown >= items.length;
   useEffect(() => {
-    if (done) {
-      const t = setTimeout(onDone, 3500);
-      return () => clearTimeout(t);
-    }
+    if (done) return;
     const t = setTimeout(() => setShown((n) => n + 1), shown === 0 ? 600 : 900);
     return () => clearTimeout(t);
   }, [shown, done, onDone]);
   return (
     <div className="modal-backdrop reveal-backdrop">
-      <div className="modal reveal reveal-gradient" role="dialog" aria-modal="true" aria-label="Your reveal">
+      <div className="modal reveal reveal-framed" role="dialog" aria-modal="true" aria-label="Your reveal">
+        <div className="reveal-body">
         {/* DRAFT wording, awaiting Harriet's approval. */}
         <div className="reveal-head">
-          <span className="reveal-tag">{first ? 'See what you got' : 'New since your last visit'}</span>
-          <span className="reveal-tag">{Math.min(shown, items.length)} of {items.length}</span>
+          <div>
+            <h2>{first ? 'See what you got' : 'New since your last visit'}</h2>
+            <p className="muted list-sub">{first ? 'Your Strikes from the curve, least rare first.' : 'Strikes added since you were last here.'}</p>
+          </div>
+          <span className="muted">{Math.min(shown, items.length)} of {items.length}</span>
         </div>
         <div className="reveal-grid">
           {items.map((x, i) => {
@@ -496,8 +497,9 @@ function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean
           })}
         </div>
         <div className="reveal-foot">
-          {!done && <button className="btn btn-ghost reveal-btn" onClick={() => setShown(items.length)}>Skip</button>}
+          {!done && <button className="btn btn-ghost" onClick={() => setShown(items.length)}>Skip</button>}
           <button className="btn btn-primary" onClick={onDone}>See my wallet</button>
+        </div>
         </div>
       </div>
     </div>

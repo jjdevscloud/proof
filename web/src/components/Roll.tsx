@@ -86,14 +86,18 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
     };
   }, [vault, signature]);
   const t = result ? tier(result.points) : 0;
-  // The same reveal as a first connect: the rarity gradient behind one square card. While the block is awaited the
+  // The same reveal as a first connect: a white pop-up with the moving border, one square card. While the block is awaited the
   // coin spins and the card trembles; when the result lands it pops in. The result itself is unchanged.
   return (
     <div className="modal-backdrop reveal-backdrop">
-      <div className="modal reveal reveal-gradient reveal-single" role="dialog" aria-modal="true" aria-label="Your roll">
+      <div className="modal reveal reveal-framed reveal-single" role="dialog" aria-modal="true" aria-label="Your roll">
+        <div className="reveal-body">
         {/* DRAFT wording, awaiting Harriet's approval. */}
         <div className="reveal-head">
-          <span className="reveal-tag">{result ? 'Your roll' : 'Rolling'}</span>
+          <div>
+            <h2>{result ? 'Your roll' : 'Rolling'}</h2>
+            <p className="muted list-sub">{result ? 'The block has decided.' : 'The next Solana block decides.'}</p>
+          </div>
         </div>
         <div className="reveal-grid">
           <div className={`reveal-card in${result ? ' landed' : ' waiting'}`}>
@@ -106,7 +110,7 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
                   <span className="small muted">{result.points} points</span>
                 </>
               ) : (
-                <span className="small muted">{err ? '' : 'The next Solana block decides'}</span>
+                <span className="small muted">{err ? '' : 'Striking'}</span>
               )}
             </div>
           </div>
@@ -122,6 +126,7 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
         )}
         <div className="reveal-foot">
           <button className="btn btn-primary" onClick={onClose}>{result ? 'Done' : 'Close'}</button>
+        </div>
         </div>
       </div>
     </div>
