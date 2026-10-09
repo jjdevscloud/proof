@@ -1543,3 +1543,4 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 
 /* While a roll is being decided, the card shows the Sequents envelope in grey. */
 .roll-square .logo { width: 84px; height: auto; fill: #c8c8c8; }
+.roll-square .logo rect { fill: #c8c8c8; }
