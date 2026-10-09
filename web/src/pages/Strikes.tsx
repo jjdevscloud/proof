@@ -147,7 +147,7 @@ export function Strikes() {
         {data && !notable.length && <p className="muted">{searching ? 'No Strikes match.' : 'Nothing here yet.'}</p>}
         {searching && (
           <ul className="strike-feature">
-            {pageRows.map((s) => <li key={s.strike}><StrikeCard s={s} /></li>)}
+            {pageRows.map((s) => <li key={s.strike} className="card-link" onClick={() => openStrike(s.strike)}><StrikeCard s={s} /></li>)}
           </ul>
         )}
         {searching && pages > 1 && (
@@ -175,7 +175,7 @@ export function Strikes() {
             </div>
             <ul className="strike-feature">
               {top5.map((s) => (
-                <li key={s.strike}><StrikeCard s={s} /></li>
+                <li key={s.strike} className="card-link" onClick={() => openStrike(s.strike)}><StrikeCard s={s} /></li>
               ))}
             </ul>
           </div>
@@ -253,4 +253,9 @@ export function Strikes() {
 // One Strike as a card: the shared Strike card, with how much survives as its grey line.
 function StrikeCard({ s }: { s: StrikeRow }) {
   return <StrikeCardView strike={s.strike} rank={s.rank} traits={s.traits} part={s.surviving} whole={s.issued} sub={BigInt(s.issued) === 0n ? 'Not yet bought' : `${pct(s.surviving, s.issued)}% surviving`} />;
+}
+
+// The whole card opens the Strike, not only its picture or title (links inside still work as before).
+function openStrike(strike: number) {
+  location.hash = `#/strike/${strike}`;
 }

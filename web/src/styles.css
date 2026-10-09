@@ -1585,3 +1585,9 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 .roll-hold { visibility: hidden; }
 .roll-flow .reveal-card, .roll-result-wrap .reveal-card { width: 240px; }
 .roll-result { min-height: 240px; }
+
+/* The Roll tab box: the tab row must not sit over the frame, so its top edge is as thick as the other sides. */
+.tabs:has(+ .roll-feature) { margin-bottom: 0; }
+
+/* A whole card that opens its page on click. */
+.card-link { cursor: pointer; }

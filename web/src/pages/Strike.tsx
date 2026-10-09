@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../api.ts';
 import type { RevealStatus, Stats, StrikeDetail } from '../api.ts';
 import { useConfig } from '../App.tsx';
@@ -8,6 +8,7 @@ import type { Verification } from '../verify.ts';
 import { ActivityFeed } from '../components/Activity.tsx';
 import { Addr, Bar, ErrorNote, Loading, StrikeCoin, Traits } from '../components/ui.tsx';
 import { shareText } from '../components/TraitIcons.tsx';
+import { PixelLoader, PixelTick } from '../components/PixelTick.tsx';
 
 export function StrikePage({ n }: { n: number }) {
   const config = useConfig();
@@ -107,6 +108,17 @@ function VerifyPanel({ n, traits }: { n: number; traits: string[] | null }) {
   };
   const v = state.v;
   const strikeOk = v ? v.ok && matches(v, n, traits) : false;
+  const steps = v ? [...v.steps, { label: `Strike #${n} is ${traits?.join(', ') ?? 'unrevealed'}`, ok: matches(v, n, traits), detail: '' }] : [];
+  // The lines appear one at a time, a moment apart, like the checks before a buy on the desk. Display only:
+  // the check itself ran above, and the outcome shows once the last line is in.
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (!v) return;
+    setShown(0);
+    const id = setInterval(() => setShown((s) => (s >= steps.length ? s : s + 1)), 900);
+    return () => clearInterval(id);
+  }, [v, steps.length]);
+  const checking = state.status === 'running' || (!!v && shown < steps.length);
 
   return (
     <section className="panel verify">
@@ -116,20 +128,21 @@ function VerifyPanel({ n, traits }: { n: number; traits: string[] | null }) {
         <SeedStatus reveal={reveal ?? null} />
       ) : (
         <>
-          <button className="btn btn-ghost" onClick={run} disabled={state.status === 'running'}>
-            {state.status === 'running' ? 'Checking the chain…' : 'Verify in my browser'}
+          <button className="btn btn-ghost" onClick={run} disabled={checking}>
+            {checking ? 'Checking the chain…' : 'Verify in my browser'}
           </button>
-          {v && (
+          {(v || state.status === 'running') && (
             <ul className="checks">
-              {[...v.steps, { label: `Strike #${n} is ${traits?.join(', ') ?? 'unrevealed'}`, ok: matches(v, n, traits), detail: '' }].map((s) => (
+              {steps.slice(0, shown).map((s) => (
                 <li key={s.label} className={s.ok ? 'ok' : 'bad'}>
-                  <span aria-hidden>{s.ok ? '✓' : '✗'}</span>
+                  <PixelTick bad={!s.ok} />
                   <span>{s.label}{s.detail && <span className="muted small">, {s.detail}</span>}</span>
                 </li>
               ))}
+              {checking && <li className="checks-pending"><PixelLoader /><span className="muted">Checking the chain…</span></li>}
             </ul>
           )}
-          {v && (strikeOk
+          {v && !checking && (strikeOk
             ? <p className="verify-ok">✓ Verified. Strike #{n}'s traits follow from the committed rules and the public seed.</p>
             : <p className="error-note">✗ Verification failed. Do not trust these traits.</p>)}
           {state.error && <p className="error-note">{state.error}</p>}

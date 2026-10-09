@@ -10,11 +10,7 @@ export function PixelTick({ className = '', bad = false }: { className?: string;
   );
 }
 
-// A small loader: three blocks lighting in turn.
+// A small loader: the four rarity colours bobbing in turn, the same as the roll's loader.
 export function PixelLoader() {
-  return (
-    <span className="pixel-loader" aria-hidden>
-      <i /><i /><i />
-    </span>
-  );
+  return <span className="brand-loader" aria-hidden><i className="t0" /><i className="t1" /><i className="t2" /><i className="t3" /></span>;
 }
