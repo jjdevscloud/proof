@@ -1,5 +1,6 @@
 // The roll (SPEC §4.5): seal ordinary $PROOF into an envelope, pay a small SOL fee, and the next
 // blocks decide which tier it becomes. The browser computes the result itself from the seed block.
+import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { api, useApi } from '../api.ts';
@@ -102,22 +103,17 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close">×</button>
         </div>
-        <div className="reveal-grid">
-          <div className={`reveal-card in${result ? ' landed' : ' waiting'}`}>
-            <div className={`reveal-square strike-mini roll-square${result ? ` t${t}` : ''}`}>
-              {result ? <RollCoin points={result.points} name={result.name} /> : <Logo />}
-              {result ? (
-                <>
-                  <strong className="strike-title">{result.name}</strong>
-                  <span className="rarity-tag"><i className={`tier-dot t${t}`} />{TIER_NAMES[t]}</span>
-                  <span className="small muted">{result.points} points</span>
-                </>
-              ) : (
-                <span className="small muted">{err ? '' : 'Striking'}</span>
-              )}
+        {result ? <RollResultCard result={result} /> : (
+          <div className="reveal-grid">
+            <div className="reveal-card in waiting">
+              <div className="reveal-square strike-mini roll-square">
+                <Logo />
+                <BrandLoader />
+                <span className="small muted">{err ? '' : 'Rolling'}</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
         {err && <ErrorNote error={err} />}
         {result && (
           <p className="reveal-note">
@@ -294,7 +290,7 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
                     <div className="reveal-square strike-mini roll-square">
                       <Logo />
                       <BrandLoader />
-                      <span className="small muted">{shownAt <= 0 ? 'Approve it in your wallet' : 'Striking'}</span>
+                      <span className="small muted">{shownAt <= 0 ? 'Approve it in your wallet' : 'Rolling'}</span>
                     </div>
                   </div>
                   {err && <ErrorNote error={err} />}
@@ -303,16 +299,7 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
 
               {landed && result && (
                 <>
-                  <div className="reveal-grid">
-                    <div className="reveal-card in landed">
-                      <div className={`reveal-square strike-mini roll-square t${tier(result.points)}`}>
-                        <RollCoin points={result.points} name={result.name} />
-                        <strong className="strike-title">{result.name}</strong>
-                        <span className="rarity-tag"><i className={`tier-dot t${tier(result.points)}`} />{TIER_NAMES[tier(result.points)]}</span>
-                        <span className="small muted">{result.points} points</span>
-                      </div>
-                    </div>
-                  </div>
+                  <RollResultCard result={result} odds={(() => { const all = [...roll.tiers, { ...roll.fallback, odds: 1_000_000 - roll.tiers.reduce((n, x) => n + x.odds, 0) }]; const hit = all.find((x) => x.name === result.name); return hit ? odds(hit.odds) : undefined; })()} />
                   <p className="reveal-note">
                     {result.points > 0
                       ? 'Your envelope now carries this rare tier. List it on the desk, gift it, or keep it. Withdrawing the tokens melts it back to ordinary.'
@@ -708,4 +695,47 @@ export function RollCurve({ roll, data, width, onTip }: {
 // A loader in the four rarity colours: green, blue, purple, black, stepping one after another.
 export function BrandLoader() {
   return <span className="brand-loader" aria-hidden><i className="t0" /><i className="t1" /><i className="t2" /><i className="t3" /></span>;
+}
+
+// Pixel confetti in the four rarity colours, bursting from behind the result card. More for rarer results.
+export function Confetti({ points }: { points: number }) {
+  const t = tier(points);
+  const n = [14, 26, 40, 60][t];
+  const pieces = Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.6;
+    const d = 140 + Math.random() * 160;
+    return {
+      key: i,
+      style: {
+        '--dx': `${Math.cos(a) * d}px`,
+        '--dy': `${Math.sin(a) * d * 0.7 - 40}px`,
+        '--rot': `${Math.round(Math.random() * 540 - 270)}deg`,
+        '--delay': `${Math.random() * 0.15}s`,
+        '--size': `${4 + Math.round(Math.random() * 4)}px`,
+      } as React.CSSProperties,
+      tone: `t${i % 4}`,
+    };
+  });
+  return <div className="confetti" aria-hidden>{pieces.map((p) => <i key={p.key} className={p.tone} style={p.style} />)}</div>;
+}
+
+// The result of a roll as one square card: the tier symbol large, its name, its rarity and points, its odds.
+function RollResultCard({ result, odds: chance }: { result: { name: string; points: number }; odds?: string }) {
+  const t = tier(result.points);
+  return (
+    <div className="roll-result-wrap">
+      <Confetti points={result.points} />
+      <div className="reveal-card in landed">
+        <div className={`reveal-square strike-mini roll-square roll-result t${t}`}>
+          <RollCoin points={result.points} name={result.name} />
+          <strong className="roll-result-name">{result.name}</strong>
+          <span className="roll-result-meta">
+            <span className="rarity-tag"><i className={`tier-dot t${t}`} />{TIER_NAMES[t]}</span>
+            <span className="muted">{result.points} points</span>
+          </span>
+          {chance && <span className="small muted">{chance} chance per roll</span>}
+        </div>
+      </div>
+    </div>
+  );
 }

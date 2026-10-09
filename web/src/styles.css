@@ -1544,3 +1544,28 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 /* While a roll is being decided, the card shows the Sequents envelope in grey. */
 .roll-square .logo { width: 84px; height: auto; fill: #c8c8c8; }
 .roll-square .logo rect { fill: #c8c8c8; }
+
+/* A roll's result: one square card, the tier symbol large at the top, its name, then rarity and points on one
+   line, its odds under them. Pixel confetti in the four rarity colours bursts out from behind it. */
+.roll-result-wrap { position: relative; display: grid; justify-items: center; padding: 8px 0; }
+.roll-result-wrap .reveal-card { width: 240px; position: relative; z-index: 1; }
+.roll-result { gap: 10px; padding: 22px 16px; }
+.roll-result .roll-coin { --size: 96px; margin: 0 0 6px; }
+.roll-result-name { font-size: 18px; line-height: 1.2; font-weight: 700; color: var(--ink); }
+.roll-result-meta { display: inline-flex; align-items: center; gap: 12px; }
+.roll-result-meta .rarity-tag { margin: 0; }
+.confetti { position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 0; pointer-events: none; }
+.confetti i { position: absolute; left: 0; top: 0; width: var(--size); height: var(--size); background: var(--tier); opacity: 0;
+  animation: confetti-burst 1.6s cubic-bezier(.15,.7,.3,1) var(--delay) forwards; }
+@keyframes confetti-burst {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 60px)) rotate(var(--rot)); }
+}
+@media (prefers-reduced-motion: reduce) { .confetti { display: none; } }
+
+/* The reveal's rarest card holds the confetti behind it. */
+.reveal-card.rarest { position: relative; }
+.reveal-card.rarest .feature-frame { position: relative; z-index: 1; }
+.reveal-body { overflow: visible; }
+.modal.reveal-framed .reveal-body { overflow: auto; }

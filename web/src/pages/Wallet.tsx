@@ -5,7 +5,7 @@ import { useConfig, useVault } from '../App.tsx';
 import { isAddress, useWallet } from '../chain.ts';
 import { BASE, CLUSTER, TIER_NAMES, feeOf, feePct, fmtTokens, lamportsFromSol, short, sol, tier } from '../format.ts';
 import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCardView, StrikeCoin, Traits, TypedConfirm, runTx } from '../components/ui.tsx';
-import { RollAgain, RollPanel } from '../components/Roll.tsx';
+import { Confetti, RollAgain, RollPanel } from '../components/Roll.tsx';
 import { EnvelopeDetails, EnvelopePic } from './Desk.tsx';
 import { VerifyBox } from '../components/Closer.tsx';
 
@@ -494,6 +494,8 @@ function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean
             );
             return (
               <div key={x.start} className={`reveal-card${i < shown ? ' in' : ''}${rarest ? ' rarest' : ''}`}>
+                {/* When the rarest lands, the same pixel confetti as a roll bursts from behind it. */}
+                {rarest && i < shown && <Confetti points={x.rank} />}
                 {rarest ? <div className="feature-frame">{card}</div> : card}
               </div>
             );
