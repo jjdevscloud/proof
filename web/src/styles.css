@@ -2448,3 +2448,17 @@ textarea {
   --size: 16px;
   margin: 0;
 }
+.roll-curve-box {
+  margin: 8px 0 24px;
+}
+.roll-curve .rc-coal {
+  fill: var(--muted);
+}
+.roll-curve .rc-gone {
+  fill: #dcdcdc;
+}
+.roll-curve .rc-none {
+  fill: none;
+  stroke: var(--frame);
+  stroke-width: 1px;
+}

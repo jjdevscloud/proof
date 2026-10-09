@@ -1,6 +1,7 @@
 // The roll (SPEC §4.5): seal ordinary $PROOF into an envelope, pay a small SOL fee, and the next
 // blocks decide which tier it becomes. The browser computes the result itself from the seed block.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useApi } from '../api.ts';
 import type { Envelope, Rolls, WalletView } from '../api.ts';
 import type { RollRules } from '../../../indexer/src/derive.ts';
@@ -222,6 +223,16 @@ export function RollStats() {
   const config = useConfig();
   const { data } = useApi<Rolls>(config.roll ? '/rolls?limit=12' : null);
   const roll = config.roll;
+  const box = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  const [tip, setTip] = useState<{ text: string; tier: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [roll]);
   if (!roll) return null;
   const winOdds = roll.tiers.reduce((t, x) => t + x.odds, 0);
   const rows = [...roll.tiers, { ...roll.fallback, odds: 1_000_000 - winOdds }];
@@ -240,6 +251,18 @@ export function RollStats() {
         <p className="mono small muted">
           {data.total.toLocaleString()} rolls so far · {rares?.toLocaleString()} rolled rares held in envelopes now
         </p>
+      )}
+      <div className="roll-curve-box" ref={box}>
+        {w > 0 && <RollCurve roll={roll} data={data} width={w} onTip={setTip} />}
+      </div>
+      {tip && (
+        <div className="hover-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} aria-hidden>
+          <i className={`tip-swatch tip-${tip.tier}`} />
+          <span className="tip-body">
+            <strong>{tip.text.split('|')[0]}</strong>
+            <span>{tip.text.split('|')[1]}</span>
+          </span>
+        </div>
       )}
       <div className="table-scroll">
       <table className="table odds roll-stats">
@@ -286,5 +309,88 @@ export function RollStats() {
         </ul>
       )}
     </section>
+  );
+}
+
+// Pixel chart in the style of the bonding-curve view: tiers from the fallback (left) to the rarest
+// (right), each column as tall as the tier is rare (log of its odds). Lit cells: share of that tier
+// ever rolled that still exists; grey: withdrawn (melted); outlined: never rolled yet.
+export function RollCurve({ roll, data, width, onTip }: {
+  roll: RollRules;
+  data: Rolls | null;
+  width: number;
+  onTip: (t: { text: string; tier: string; x: number; y: number } | null) => void;
+}) {
+  const W = Math.max(300, Math.round(width));
+  const H = 300;
+  const cell = 10;
+  const gap = 2;
+  const pitch = cell + gap;
+  const base = H - 26;
+  const winOdds = roll.tiers.reduce((t, x) => t + x.odds, 0);
+  const tiers = [{ ...roll.fallback, odds: 1_000_000 - winOdds }, ...[...roll.tiers].reverse()];
+  const columns = Math.floor(W / pitch);
+  const band = Math.max(1, Math.floor(columns / tiers.length) - 1);
+  const headroom = Math.ceil(pitch * 1.4) + 22;
+  const maxRows = Math.floor((base - headroom) / pitch);
+  const rarity = (odds: number) => Math.log10(1_000_000 / Math.max(1, odds));
+  const top = rarity(Math.min(...tiers.map((t) => t.odds)));
+  const rowsOf = (odds: number) => Math.max(2, Math.round(2 + (maxRows - 2) * (rarity(odds) / top) ** 1.15));
+  const stride = band + 1;
+  const offset = Math.floor((columns - stride * tiers.length + 1) / 2) * pitch;
+  const rects: ReactNode[] = [];
+  const labels: ReactNode[] = [];
+  const tops: [number, number][] = [];
+  tiers.forEach((t, i) => {
+    const rolled = data?.counts[t.name] ?? 0;
+    const h = data?.held[t.name];
+    const exist = h?.count ?? 0;
+    const rows = rowsOf(t.odds);
+    const total = rows * band;
+    const lit = rolled ? Math.max(exist ? 1 : 0, Math.round((total * exist) / rolled)) : 0;
+    const tr = tier(t.points);
+    const tip = `${t.name} · ${TIER_NAMES[tr]}|${odds(t.odds)} chance · ${rolled.toLocaleString()} rolled · ${exist.toLocaleString()} exist now`
+      + (h?.listed ? ` · ${h.listed} listed, floor ${sol(h.floor!)} SOL` : '');
+    const x0 = offset + i * stride * pitch;
+    let n = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < band; c++) {
+        const cls = !rolled ? 'rc-none' : n < lit ? (tr === 0 ? 'rc-coal' : `lab-t${tr}`) : 'rc-gone';
+        rects.push(<rect key={`${i},${r},${c}`} className={cls} x={x0 + c * pitch} y={base - (r + 1) * pitch} width={cell} height={cell} data-tip={tip} data-tier={!rolled ? 'u' : tr === 0 ? 'm' : tr} />);
+        n++;
+      }
+    }
+    const cx = x0 + (band * pitch - gap) / 2;
+    tops.push([cx, base - rows * pitch - pitch * 1.2]);
+    if (data) labels.push(<text key={`n${i}`} x={cx} y={base - rows * pitch - 6} textAnchor="middle" className="lab-muted">{exist.toLocaleString()}</text>);
+    if (band * pitch >= 70) labels.push(<text key={`l${i}`} x={cx} y={base + 18} textAnchor="middle">{t.name.toUpperCase()}</text>);
+  });
+  const path = tops.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${(y - 10).toFixed(1)}`).join(' ');
+  const [tx, ty] = tops[tops.length - 1];
+  const [px, py] = tops[tops.length - 2];
+  const angle = Math.atan2(ty - py, tx - px);
+  const head = [0.5, -0.5].map((d) => `${tx - 7 * Math.cos(angle + d)},${ty - 10 - 7 * Math.sin(angle + d)}`).join(' ');
+  return (
+    <svg
+      className="lab-svg roll-curve"
+      viewBox={`0 0 ${W} ${H}`}
+      shapeRendering="crispEdges"
+      onMouseMove={(e) => {
+        const el = (e.target as Element).closest('[data-tip]');
+        onTip(el ? { text: el.getAttribute('data-tip')!, tier: el.getAttribute('data-tier') ?? '', x: e.clientX, y: e.clientY } : null);
+      }}
+      onMouseLeave={() => onTip(null)}
+    >
+      {rects}
+      {labels}
+      <path className="lab-arrow" d={path} shapeRendering="geometricPrecision" />
+      <polygon className="lab-arrowhead" points={`${tx},${ty - 10} ${head}`} shapeRendering="geometricPrecision" />
+      {band * pitch < 70 && (
+        <>
+          <text x={offset} y={base + 18}>{tiers[0].name.toUpperCase()}</text>
+          <text x={offset + (tiers.length * stride - 1) * pitch} y={base + 18} textAnchor="end">{tiers[tiers.length - 1].name.toUpperCase()}</text>
+        </>
+      )}
+    </svg>
   );
 }
