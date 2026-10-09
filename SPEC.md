@@ -104,6 +104,33 @@ except *which* Strikes get the random errors:
 
 Before the reveal every Strike has rank 0. Tools: `ops/make-commit.ts`, `ops/make-reveal.ts`.
 
+### 4.5 The roll (ordinary $PROOF → a rolled tier)
+The rules file's `roll` section (applied by the indexer from launch; the reveal must carry the same
+section or the indexer halts) lets an envelope of ordinary $PROOF roll for a tier:
+- **Ordinary seal**: a seal whose declared ranges all start at or past the saleable supply (the
+  website uses start 2^62). It is invalid as a rare seal, so the vault holds ordinary $PROOF; the
+  ledger records it as an ordinary seal rather than a failed one.
+- **Roll**: a transaction with the memo `proof:v1:roll:<envelope>` (any signer) and system transfers
+  from the envelope's holder to `roll.treasury` totalling at least `roll.feeLamports` (0.01 SOL).
+  Only the first roll memo in a transaction counts, and it may follow a seal of the same envelope in
+  that transaction. It counts only if the envelope is sealed (not listed), has no roll pending, holds
+  no rare ranges, holds at least `roll.minEntry` (50,000 $PROOF), and its last roll was not a tier
+  with points > 0. Otherwise it is recorded as not counted, with the reason; the fee is not refunded.
+- **Seed block**: the first produced block at or after `roll slot + roll.seedDelaySlots` (2). The roll
+  settles before any transaction at or after that slot is applied.
+- **Result**: `x = below(1,000,000)` from the random stream of §4.3 seeded with
+  `sha256(utf8("sequents:v1:roll|" + roll signature + "|" + blockhash))`. The tiers, rarest first, take
+  consecutive slices of `[0, 1,000,000)` by their `odds`; anything past them is `roll.fallback`
+  (Coal, 0 points). No caps.
+- The result lives on the envelope: it moves with sales and gifts and is destroyed by withdrawal,
+  like any rarity. Fallback envelopes may roll again. Browsers compute the result from the
+  confirmed seed block in seconds; the ledger records it once the block is finalized.
+
+Tiers (points, chance per roll): Hoard (100, 0.05%), Pattern (85, 0.1%), Die Trial (70, 0.2%),
+Overstrike (55, 0.4%), Restrike (45, 0.6%), Second Strike (30, 1%), Recoinage (25, 1.5%),
+Reissue (20, 2%), Mint Run (15, 3%), Assay (10, 4%), Coal (0, the remaining 87.15%). Rarity bands
+as for Strikes: 70+ Legendary, 30–69 Rare, 1–29 Uncommon, 0 Common.
+
 ## 5. Where rarity can live
 
 | Place | Holds rare ranges? |

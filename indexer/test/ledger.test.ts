@@ -289,3 +289,21 @@ test('same transactions give the same fingerprint', () => {
   assert.equal(run(), run());
   assert.equal(ledgerBalance(newLedger(), 'none'), 0n);
 });
+
+test('a reveal whose roll rules differ from the ones the indexer applied halts the ledger', () => {
+  const roll = { minEntry: '50000000000', feeLamports: '10000000', treasury: 'hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb', seedDelaySlots: 2,
+    tiers: [{ name: 'Hoard', points: 100, odds: 500 }], fallback: { name: 'Coal', points: 0 } };
+  const run = (committed: object, applied: object | undefined) => {
+    const c = new Chain(new Ledger({ ...newLedger().config, roll: applied as any }));
+    const text = rulesText(committed);
+    c.tx([{ kind: 'commit', root: rootOf(text), deadlineSlot: 5 }]);
+    c.tx([{ kind: 'curveBuy', to: 'A', amount: STRIKE }]);
+    c.slot = 6;
+    c.ledger.registerReveal(revealFile(text, 1), H);
+    c.tx([{ kind: 'reveal', fileHash: H }]);
+    return c.ledger.reveal !== null;
+  };
+  assert.equal(run({ roll }, roll), true);
+  assert.throws(() => run({ roll: { ...roll, feeLamports: '1' } }, roll), /roll rules differ/);
+  assert.throws(() => run({}, roll), /roll rules differ/);
+});

@@ -13,6 +13,7 @@ export type FollowerConfig = {
   vaultProgramId: string;
   revealAuthority: string;
   maxWindowSlots: number;
+  rollTreasury?: string; // every roll pays it, so its transactions include every roll
 };
 
 type Queued = { signature: string; slot: number };
@@ -35,7 +36,8 @@ export class Follower {
   }
 
   private watched(): Set<string> {
-    return new Set([this.config.curveTokenAccount, this.config.vaultProgramId, this.config.revealAuthority, ...this.ledger.holdings.keys()]);
+    const extra = this.config.rollTreasury ? [this.config.rollTreasury] : [];
+    return new Set([this.config.curveTokenAccount, this.config.vaultProgramId, this.config.revealAuthority, ...extra, ...this.ledger.holdings.keys()]);
   }
 
   // Processes one window up to the finalized slot. Returns the number of transactions applied.
@@ -65,6 +67,8 @@ export class Follower {
       const next = await this.earliest(queue);
       queue.delete(next.signature);
       seen.add(next.signature);
+      // Rolls whose seed block is this transaction's block or earlier settle before it.
+      await this.settleRolls(next.slot, onChanges);
 
       const before = new Set(this.ledger.holdings.keys());
       const raw = await this.rpc.transaction(next.signature);
@@ -86,10 +90,20 @@ export class Follower {
         }
       }
     }
+    await this.settleRolls(to, onChanges);
     this.ledger.passedSlot(to);
     this.syncedSlot = to;
     this.blockOrders.clear();
     return applied;
+  }
+
+  // Settles every pending roll whose seed block exists at or before `slot` (SPEC §4.5).
+  private async settleRolls(slot: number, onChanges: (c: TxChanges) => void): Promise<void> {
+    for (const env of this.ledger.dueRolls(slot)) {
+      const block = await this.rpc.firstBlockFrom(env.rolling!.seedSlot);
+      if (!block || block.slot > slot) continue; // seed block not finalized yet
+      onChanges(this.ledger.settleRoll(env.address, block.slot, block.blockhash));
+    }
   }
 
   private async earliest(queue: Map<string, Queued>): Promise<Queued> {

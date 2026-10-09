@@ -1,5 +1,7 @@
 import { useConfig } from '../App.tsx';
 import { Addr, More } from '../components/ui.tsx';
+import { OddsTable } from '../components/Roll.tsx';
+import { fmtTokens, sol } from '../format.ts';
 
 // Deterministic PRNG so the diagrams render identically every time.
 function seeded(seed: number) {
@@ -184,6 +186,26 @@ export function Rules() {
             </p>
           </More>
         </section>
+
+        {config.roll && (
+          <section className="work">
+            <h2>6. Roll an envelope</h2>
+            <OddsTable roll={config.roll} />
+            <More>
+              <p>
+                Ordinary $PROOF can roll for a rare tier. Seal at least {fmtTokens(config.roll.minEntry)} into an envelope from your
+                wallet page and click Roll ({sol(config.roll.feeLamports)} SOL to the Sequents treasury per roll). The result comes from
+                the first Solana block at least {config.roll.seedDelaySlots} slots after your roll lands, which nobody can know when you
+                click: sha256 of the roll's signature and that block's hash picks the tier, with the odds above and no limit on how many of
+                each can exist. Your browser computes the result itself in a second or two; the ledger records it once the block is final.
+              </p>
+              <p>
+                A rolled tier lives on the envelope: list it on the desk, gift it, or keep it. {config.roll.fallback.name} envelopes can roll
+                again. Withdrawing the tokens melts the tier, like any rarity.
+              </p>
+            </More>
+          </section>
+        )}
       </div>
 
       <h2>What you can check yourself</h2>

@@ -10,6 +10,7 @@ import { createApi, json } from './api.ts';
 import type { ApiState } from './api.ts';
 import { parseReveal } from './reveal.ts';
 import { checkLaunch, findMintRecord } from './launch.ts';
+import { parseRules } from './derive.ts';
 
 type Config = {
   rpcUrl: string;
@@ -50,12 +51,17 @@ const pending = !config.mint || config.mint === 'PENDING';
 const rulesCandidates = [env.RULES_FILE, 'rules/sequents-v1.json', '../rules/sequents-v1.json', 'rules/sequents-v1.template.json', '../rules/sequents-v1.template.json'];
 const rulesPath = rulesCandidates.find((p) => p && existsSync(p));
 const rulesText = rulesPath ? readFileSync(rulesPath, 'utf8') : undefined;
+// The roll (SPEC §4.5) runs from launch, so the indexer applies the roll section of these rules;
+// at the reveal the ledger checks it equals the committed one.
+const rollRules = rulesText ? JSON.parse(rulesText).roll : undefined;
+if (rollRules) parseRules(JSON.stringify({ ...JSON.parse(rulesText!), deadlineSlot: 1 }));
 mkdirSync(config.dataDir, { recursive: true });
 const snapshotPath = join(config.dataDir, 'snapshot.json');
 const ledgerConfig = () => ({
   curveTokenAccount: config.curveTokenAccount,
   saleableSupply: BigInt(config.saleableSupply),
   strikeSize: BigInt(config.strikeSize),
+  roll: rollRules,
 });
 
 // Before launch this is an empty placeholder ledger; start() replaces it.
@@ -106,6 +112,7 @@ function reviveChanges(line: string): TxChanges {
   for (const ch of tx.changes) {
     if (ch.ranges) ch.ranges = ch.ranges.map((r: any) => ({ start: BigInt(r.start), end: BigInt(r.end) }));
     if (ch.price !== undefined) ch.price = BigInt(ch.price);
+    if (ch.ordinary !== undefined) ch.ordinary = BigInt(ch.ordinary);
   }
   return tx;
 }
@@ -171,7 +178,8 @@ async function loop() {
 function start(): Follower {
   loadLedger();
   lastFingerprintSlot = syncedSlot;
-  const f = new Follower(ledger, new Decoder(config), rpc, { ...config }, syncedSlot);
+  const rollTreasury = rollRules?.treasury;
+  const f = new Follower(ledger, new Decoder({ ...config, rollTreasury }), rpc, { ...config, rollTreasury }, syncedSlot);
   follower = f;
   apiState.ledger = ledger;
   apiState.publicConfig.mint = config.mint;

@@ -7,6 +7,7 @@ import { useWallet } from '../chain.ts';
 import { feeOf, feePct, fmtTokens, short, sol } from '../format.ts';
 import { matches, verifyReveal } from '../verify.ts';
 import { Addr, ErrorNote, Loading, Modal, More, SegmentList, runTx } from '../components/ui.tsx';
+import { RollBadge } from '../components/Roll.tsx';
 
 export function Desk() {
   const { data, error } = useApi<Envelope[]>('/envelopes?status=listed');
@@ -41,7 +42,8 @@ export function Desk() {
               <span className="pill pill-seal">Envelope {short(e.address)}</span>
               <span className="price">{sol(e.price)} <small>SOL</small></span>
             </div>
-            <SegmentList segments={e.segments} empty="No rare tokens — this envelope's seal was invalid." />
+            <RollBadge e={e} />
+            <SegmentList segments={e.segments} empty={e.roll ? 'Ordinary $PROOF carrying a rolled tier.' : "No rare Strikes: the contents are ordinary $PROOF."} />
             {BigInt(e.common) > 0n && <p className="small muted">+ {fmtTokens(e.common)} ordinary $PROOF</p>}
             <div className="card-foot">
               <span className="small muted">Seller <Addr value={e.holder} href={`#/wallet/${e.holder}`} /></span>
@@ -88,7 +90,8 @@ function BuyModal({ envelope, onClose }: { envelope: Envelope; onClose: () => vo
 
   return (
     <Modal title={`Envelope ${short(envelope.address)}`} onClose={onClose}>
-      <SegmentList segments={envelope.segments} />
+      <RollBadge e={envelope} />
+      <SegmentList segments={envelope.segments} empty={envelope.roll ? 'Ordinary $PROOF carrying a rolled tier.' : 'No rare Strikes.'} />
       <div className="buy-summary">
         <span>Price</span>
         <strong className="price">{sol(envelope.price)} SOL</strong>

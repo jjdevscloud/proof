@@ -32,7 +32,7 @@ export type ApiState = {
   rulesText?: string; // the rarity rules (committed file, or the template before launch)
 };
 
-const API_ROUTES = new Set(['health', 'config', 'rules', 'stats', 'wallet', 'strike', 'strikes', 'envelopes', 'envelope', 'activity', 'preview', 'reveal', 'stream']);
+const API_ROUTES = new Set(['health', 'config', 'rules', 'stats', 'wallet', 'strike', 'strikes', 'envelopes', 'envelope', 'activity', 'preview', 'reveal', 'rolls', 'stream']);
 
 // What the website needs from Solana, and nothing heavier: no transaction-history or full-block queries.
 const RPC_METHODS = new Set([
@@ -92,6 +92,7 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
             revealHash: l.revealHash,
             revealed: !!l.reveal,
             pending: !!state.pending,
+            roll: l.config.roll ?? null,
           });
         case 'rules': {
           if (!state.rulesText) return send(404, { error: 'rules not available' });
@@ -154,6 +155,14 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
           if (!l.reveal) return send(200, status);
           const { rules, seedSlot, blockhash } = l.reveal;
           return send(200, { ...status, rules, seedSlot, blockhash });
+        }
+        case 'rolls': {
+          // Settled rolls, newest first, and how often each result has come up.
+          const rolled = history.flatMap((c) => c.changes.filter((ch) => ch.kind === 'rolled').map((ch) => ({ slot: c.slot, signature: c.signature, ...ch })));
+          const counts: Record<string, number> = {};
+          for (const r of rolled) counts[(r as any).name] = (counts[(r as any).name] ?? 0) + 1;
+          const limit = Math.min(Number(url.searchParams.get('limit') ?? 30) || 30, 200);
+          return send(200, { total: rolled.length, counts, recent: rolled.slice(-limit).reverse() });
         }
         case 'stream':
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });

@@ -87,6 +87,8 @@ node pump-check.ts 200                           # decoder vs REAL mainnet pump.
 #   node setup.ts; start indexer with config.localnet.json (+ -b); node scenario.ts; node verify.ts
 #   node token2022-local.ts   # vault flow on a pump.fun-style Token-2022 mint (fresh validator)
 #   node launch-guard.ts      # only the launch authority can record the mint (fresh validator)
+#   node roll-local.ts        # the roll: seal & roll, roll again, rolls that must not count
+#                             # (start the indexer with RULES_FILE=../devnet/rules.localnet.json)
 ```
 
 The website shows a devnet-only "Get test tokens" panel on your own wallet page (mock curve buy).

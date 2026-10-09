@@ -14,7 +14,10 @@ export type DecoderConfig = {
   pumpNonBuyInstructions: string[];
   vaultProgramId: string;
   revealAuthority: string;
+  rollTreasury?: string; // system transfers to it are reported, for roll fees (SPEC §4.5)
 };
+
+export const SYSTEM_PROGRAM = '11111111111111111111111111111111';
 
 export const TOKEN_PROGRAMS = new Set([
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
@@ -77,9 +80,17 @@ export class Decoder {
       } else if (ix.programId === this.config.vaultProgramId) {
         const ev = this.vaultEvent(ix);
         if (ev) events.push(ev);
-      } else if (MEMO_PROGRAMS.has(ix.programId) && signers.has(this.config.revealAuthority)) {
-        const ev = memoEvent(typeof ix.parsed === 'string' ? ix.parsed : '');
+      } else if (MEMO_PROGRAMS.has(ix.programId)) {
+        const text = typeof ix.parsed === 'string' ? ix.parsed : '';
+        const ev = signers.has(this.config.revealAuthority) ? memoEvent(text) : null;
         if (ev) events.push(ev);
+        else {
+          const roll = /^proof:v1:roll:([1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(text.trim());
+          if (roll) events.push({ kind: 'roll', envelope: roll[1] });
+        }
+      } else if (ix.programId === SYSTEM_PROGRAM && this.config.rollTreasury && ix.parsed?.type === 'transfer'
+          && ix.parsed.info.destination === this.config.rollTreasury) {
+        events.push({ kind: 'lamports', from: ix.parsed.info.source, to: ix.parsed.info.destination, lamports: BigInt(ix.parsed.info.lamports) });
       }
     }
     return { slot: tx.slot, signature, pre, post, events };

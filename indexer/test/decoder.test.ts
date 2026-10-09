@@ -172,3 +172,17 @@ test('failed transactions are skipped', () => {
   const t = tx({ keys: [{ pubkey: 'A' }], ixs: [transfer('A', 'B', 1n)], err: { InstructionError: [0, 'Custom'] } });
   assert.equal(decoder.decode(t), null);
 });
+
+test('roll memos from anyone, and system transfers to the roll treasury', () => {
+  const TREASURY = 'Treasury1111111111111111111111111111111111';
+  const ENV = 'Enve1ope111111111111111111111111111111111111';
+  const d = new Decoder({ ...decoder.config, rollTreasury: TREASURY });
+  const fee = (destination: string) => ({ program: 'system', programId: '11111111111111111111111111111111', parsed: { type: 'transfer', info: { source: 'alice', destination, lamports: 10000000 } } });
+  const memo = { program: 'spl-memo', programId: MEMO, parsed: `proof:v1:roll:${ENV}` };
+  const t = tx({ keys: [{ pubkey: 'alice', signer: true }], ixs: [fee(TREASURY), fee('elsewhere'), memo, { ...memo, parsed: 'proof:v1:roll:not-an-address!' }] });
+  assert.deepEqual(d.decode(t)!.events, [
+    { kind: 'lamports', from: 'alice', to: TREASURY, lamports: 10000000n },
+    { kind: 'roll', envelope: ENV },
+  ]);
+  assert.deepEqual(decoder.decode(t)!.events, [{ kind: 'roll', envelope: ENV }], 'no treasury configured: no fee events');
+});
