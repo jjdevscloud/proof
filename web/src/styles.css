@@ -1571,3 +1571,4 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 .modal.reveal-framed .reveal-body { overflow: auto; }
 .reveal-card { position: relative; }
 .reveal-card > .strike-mini, .reveal-card > .feature-frame { position: relative; z-index: 1; }
+.confetti i { animation-duration: var(--dur, 1.6s); }

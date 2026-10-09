@@ -700,26 +700,28 @@ export function BrandLoader() {
 // Pixel confetti in the four rarity colours, bursting from behind a card. None for Common, more the rarer it is.
 export function Confetti({ points }: { points: number }) {
   const t = tier(points);
-  // No confetti for Common. Uncommon, Rare and Legendary get more the rarer they are.
+  // Common: none. Uncommon: a small blue burst. Rare: a small burst in every colour. Legendary: a big,
+  // dramatic burst in every colour, thrown further and falling longer.
   if (t === 0) return null;
-  const n = [0, 22, 40, 64][t];
+  const n = [0, 16, 28, 110][t];
+  const reach = [0, 110, 150, 340][t];
   const pieces = Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2 + Math.random() * 0.6;
-    const d = 140 + Math.random() * 160;
+    const d = reach * (0.55 + Math.random() * 0.6);
     return {
       key: i,
       style: {
         '--dx': `${Math.cos(a) * d}px`,
-        '--dy': `${Math.sin(a) * d * 0.7 - 40}px`,
-        '--rot': `${Math.round(Math.random() * 540 - 270)}deg`,
-        '--delay': `${Math.random() * 0.15}s`,
-        '--size': `${4 + Math.round(Math.random() * 4)}px`,
+        '--dy': `${Math.sin(a) * d * 0.75 - 40}px`,
+        '--rot': `${Math.round(Math.random() * 720 - 360)}deg`,
+        '--delay': `${(t === 3 ? Math.random() * 0.4 : Math.random() * 0.12).toFixed(2)}s`,
+        '--size': `${(t === 3 ? 5 : 4) + Math.round(Math.random() * 4)}px`,
+        '--dur': t === 3 ? '2.4s' : '1.4s',
       } as React.CSSProperties,
-      // Uncommon is all blue, Rare all purple, Legendary uses every rarity colour.
-      tone: t === 3 ? `t${i % 4}` : `t${t}`,
+      tone: t === 1 ? 't1' : `t${i % 4}`,
     };
   });
-  return <div className="confetti" aria-hidden>{pieces.map((p) => <i key={p.key} className={p.tone} style={p.style} />)}</div>;
+  return <div className={`confetti confetti-t${t}`} aria-hidden>{pieces.map((p) => <i key={p.key} className={p.tone} style={p.style} />)}</div>;
 }
 
 // The result of a roll as one square card: the tier symbol large, its name, its rarity and points, its odds.
