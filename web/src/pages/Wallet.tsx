@@ -469,7 +469,7 @@ function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean
     return () => clearTimeout(t);
   }, [shown, done, onDone]);
   return (
-    <div className="modal-backdrop reveal-backdrop">
+    <div className="modal-backdrop reveal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onDone()}>
       <div className="modal reveal reveal-framed" role="dialog" aria-modal="true" aria-label="Your reveal">
         <div className="reveal-body">
         {/* DRAFT wording, awaiting Harriet's approval. */}
@@ -478,7 +478,10 @@ function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean
             <h2>{first ? 'See what you got' : 'New since your last visit'}</h2>
             <p className="muted list-sub">{first ? 'Your Strikes from the curve, least rare first.' : 'Strikes added since you were last here.'}</p>
           </div>
-          <span className="muted">{Math.min(shown, items.length)} of {items.length}</span>
+          <span className="reveal-head-right">
+            <span className="muted">{Math.min(shown, items.length)} of {items.length}</span>
+            <button className="icon-btn" onClick={onDone} aria-label="Close">×</button>
+          </span>
         </div>
         <div className="reveal-grid">
           {items.map((x, i) => {

@@ -1537,3 +1537,6 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 /* Roll pop-ups the same size as the Desk envelope pop-up (Review and buy). */
 .modal.reveal-single, .modal.reveal-single.roll-flow { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
 .reveal-single .reveal-body { max-height: calc(100vh - 38px); }
+
+/* Reveal pop-ups: the count and a close X together at the top right. */
+.reveal-head-right { display: inline-flex; align-items: center; gap: 14px; }

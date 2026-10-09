@@ -90,7 +90,7 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
   // The same reveal as a first connect: a white pop-up with the moving border, one square card. While the block is awaited the
   // coin spins and the card trembles; when the result lands it pops in. The result itself is unchanged.
   return (
-    <div className="modal-backdrop reveal-backdrop">
+    <div className="modal-backdrop reveal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal reveal reveal-framed reveal-single" role="dialog" aria-modal="true" aria-label="Your roll">
         <div className="reveal-body">
         {/* DRAFT wording, awaiting Harriet's approval. */}
@@ -99,6 +99,7 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
             <h2>{result ? 'Your roll' : 'Rolling'}</h2>
             <p className="muted list-sub">{result ? 'The block has decided.' : 'The next Solana block decides.'}</p>
           </div>
+          <button className="icon-btn" onClick={onClose} aria-label="Close">×</button>
         </div>
         <div className="reveal-grid">
           <div className={`reveal-card in${result ? ' landed' : ' waiting'}`}>
@@ -210,7 +211,7 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
     </section>
 
       {open && (
-        <div className="modal-backdrop reveal-backdrop">
+        <div className="modal-backdrop reveal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && (phase === 'amount' || landed) && closeFlow()}>
           <div className="modal reveal reveal-framed reveal-single roll-flow" role="dialog" aria-modal="true" aria-label="Seal and roll">
             <div className="reveal-body">
               {/* DRAFT wording, awaiting Harriet's approval. */}
