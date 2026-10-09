@@ -7,7 +7,10 @@ import { Decoder } from './decoder.ts';
 import { Follower } from './follower.ts';
 import { Rpc } from './rpc.ts';
 import { createApi, json } from './api.ts';
+import type { ApiState } from './api.ts';
 import { parseReveal } from './reveal.ts';
+import { checkLaunch, findMintRecord } from './launch.ts';
+import { parseRules } from './derive.ts';
 
 type Config = {
   rpcUrl: string;
@@ -40,29 +43,38 @@ if (env.DATA_DIR) config.dataDir = env.DATA_DIR;
 if (env.REVEAL_FILE) config.revealFile = env.REVEAL_FILE;
 const staticDir = env.STATIC_DIR || undefined;
 
-// Pre-launch: no mint yet. The site is served with the rules, but nothing is indexed.
+// Pre-launch: no mint yet. The site is served with the rules, but nothing is indexed until the
+// launch authority records the mint in the vault program (see launch.ts); then this goes live.
 const pending = !config.mint || config.mint === 'PENDING';
 
 // The rules shown on the site: the final committed file once it exists, else the template.
 const rulesCandidates = [env.RULES_FILE, 'rules/sequents-v1.json', '../rules/sequents-v1.json', 'rules/sequents-v1.template.json', '../rules/sequents-v1.template.json'];
 const rulesPath = rulesCandidates.find((p) => p && existsSync(p));
 const rulesText = rulesPath ? readFileSync(rulesPath, 'utf8') : undefined;
+// The roll (SPEC §4.5) runs from launch, so the indexer applies the roll section of these rules;
+// at the reveal the ledger checks it equals the committed one.
+const rollRules = rulesText ? JSON.parse(rulesText).roll : undefined;
+if (rollRules) parseRules(JSON.stringify({ ...JSON.parse(rulesText!), deadlineSlot: 1 }));
 mkdirSync(config.dataDir, { recursive: true });
 const snapshotPath = join(config.dataDir, 'snapshot.json');
-const ledgerConfig = {
+const ledgerConfig = () => ({
   curveTokenAccount: config.curveTokenAccount,
   saleableSupply: BigInt(config.saleableSupply),
   strikeSize: BigInt(config.strikeSize),
-};
+  roll: rollRules,
+});
 
-let ledger: Ledger;
+// Before launch this is an empty placeholder ledger; start() replaces it.
+let ledger = new Ledger(ledgerConfig());
 let syncedSlot = config.startSlot;
-if (existsSync(snapshotPath)) {
-  const snap = JSON.parse(readFileSync(snapshotPath, 'utf8'));
-  ledger = Ledger.fromJSON(ledgerConfig, snap.ledger);
-  syncedSlot = snap.syncedSlot;
-} else {
-  ledger = new Ledger(ledgerConfig);
+function loadLedger() {
+  if (existsSync(snapshotPath)) {
+    const snap = JSON.parse(readFileSync(snapshotPath, 'utf8'));
+    ledger = Ledger.fromJSON(ledgerConfig(), snap.ledger);
+    syncedSlot = snap.syncedSlot;
+  } else {
+    ledger = new Ledger(ledgerConfig());
+  }
 }
 
 const rpc = new Rpc(config.rpcUrl);
@@ -87,13 +99,7 @@ async function registerRevealFile() {
   console.log(`reveal file registered: ${fileHash}`);
 }
 
-const follower = new Follower(
-  ledger,
-  new Decoder(config),
-  rpc,
-  { ...config },
-  syncedSlot,
-);
+let follower: Follower | null = null;
 // History for activity feeds and strike pages, rebuilt from the append-only change log.
 const changesPath = join(config.dataDir, 'changes.jsonl');
 const history: TxChanges[] = existsSync(changesPath)
@@ -106,12 +112,13 @@ function reviveChanges(line: string): TxChanges {
   for (const ch of tx.changes) {
     if (ch.ranges) ch.ranges = ch.ranges.map((r: any) => ({ start: BigInt(r.start), end: BigInt(r.end) }));
     if (ch.price !== undefined) ch.price = BigInt(ch.price);
+    if (ch.ordinary !== undefined) ch.ordinary = BigInt(ch.ordinary);
   }
   return tx;
 }
-const { server, broadcast } = createApi({
+const apiState: ApiState = {
   ledger,
-  syncedSlot: () => follower.syncedSlot,
+  syncedSlot: () => follower?.syncedSlot ?? syncedSlot,
   history,
   staticDir,
   previewDir: env.STATIC_PREVIEW_DIR || undefined,
@@ -127,17 +134,19 @@ const { server, broadcast } = createApi({
     feeBps: config.feeBps ?? 150,
     revealAuthority: config.revealAuthority,
   },
-});
+};
+const { server, broadcast } = createApi(apiState);
 server.listen(config.port, () => console.log(`listening on :${config.port}${staticDir ? ' (website + /api + /rpc)' : ''}, synced to slot ${syncedSlot}`));
 
 function saveSnapshot() {
   const tmp = snapshotPath + '.tmp';
-  writeFileSync(tmp, json({ syncedSlot: follower.syncedSlot, ledger: ledger.toJSON() }));
+  writeFileSync(tmp, json({ syncedSlot: follower!.syncedSlot, ledger: ledger.toJSON() }));
   renameSync(tmp, snapshotPath);
 }
 
 let lastFingerprintSlot = syncedSlot;
 async function loop() {
+  const follower = start();
   for (;;) {
     const pending: TxChanges[] = [];
     try {
@@ -165,5 +174,58 @@ async function loop() {
     if (follower.syncedSlot >= follower.finalizedSlot) await new Promise((r) => setTimeout(r, config.pollMs));
   }
 }
-if (pending) console.log('pre-launch mode: no mint configured, indexing is off');
+// Builds the ledger and follower for the configured mint and switches the API to live.
+function start(): Follower {
+  loadLedger();
+  lastFingerprintSlot = syncedSlot;
+  const rollTreasury = rollRules?.treasury;
+  const f = new Follower(ledger, new Decoder({ ...config, rollTreasury }), rpc, { ...config, rollTreasury }, syncedSlot);
+  follower = f;
+  apiState.ledger = ledger;
+  apiState.publicConfig.mint = config.mint;
+  apiState.publicConfig.curveTokenAccount = config.curveTokenAccount;
+  apiState.pending = false;
+  return f;
+}
+
+// Pre-launch: poll the vault program for the mint record. When it appears and the token passes
+// the checks, go live in place (no restart, no new config). History from the commit slot onwards
+// is indexed, so the moments between token creation and going live are not lost.
+async function awaitLaunch() {
+  console.log('pre-launch mode: waiting for the mint to be recorded in the vault program');
+  // Checked once, at launch: later (e.g. after the curve migrates) the curve-balance check no longer
+  // applies, so a restart reuses the launch that already passed.
+  const launchPath = join(config.dataDir, 'launch.json');
+  if (existsSync(launchPath)) {
+    Object.assign(config, JSON.parse(readFileSync(launchPath, 'utf8')));
+    console.log(`launched earlier: mint ${config.mint}`);
+    return loop();
+  }
+  let lastReport = '';
+  for (;;) {
+    try {
+      const launch = await findMintRecord(rpc, config.vaultProgramId);
+      if (launch) {
+        const failures = config.startSlot > 0
+          ? await checkLaunch(rpc, launch, config.pumpProgramId, BigInt(config.saleableSupply))
+          : ['startSlot is not set (run make-commit --post and deploy before creating the token)'];
+        if (!failures.length) {
+          config.mint = launch.mint;
+          config.curveTokenAccount = launch.curveTokenAccount;
+          writeFileSync(launchPath, JSON.stringify(launch));
+          console.log(`LAUNCH: mint ${launch.mint}, curve token account ${launch.curveTokenAccount}; going live`);
+          return loop();
+        }
+        const report = failures.join('; ');
+        if (report !== lastReport) console.error(`LAUNCH BLOCKED for mint ${launch.mint}: ${report}`);
+        lastReport = report;
+      }
+    } catch (e) {
+      console.error(`launch check failed, retrying: ${(e as Error).message}`);
+    }
+    await new Promise((r) => setTimeout(r, config.pollMs));
+  }
+}
+
+if (pending) awaitLaunch();
 else loop();

@@ -22,13 +22,13 @@ Hash routes, so every page is one `index.html`.
 
 | Route | File | What it shows |
 |---|---|---|
-| `#/` | `src/pages/Overview.tsx` | Hero, live stats, the mint sheet, survival by rarity, live activity |
-| (pre-launch) | `src/pages/Prelaunch.tsx` | "Launching soon": rarity table with odds, launch steps |
-| `#/strikes` | `src/pages/Strikes.tsx` | Mint sheet with filters, list of the rarest Strikes |
+| `#/` | `src/pages/Overview.tsx` | Hero word animation, scroll-revealed essay, mechanisms, traits table, Verify holdings box |
+| (pre-launch) | `src/pages/Prelaunch.tsx` | "Launching soon": rarity table with odds, launch steps. Before launch only Overview and Rules render; every other route shows this |
+| `#/strikes` | `src/pages/Strikes.tsx` | Bonding curve / mint sheet / gradient tabs with filterable key, the 60 rarest Strikes, survival by rarity |
 | `#/strike/:n` | `src/pages/Strike.tsx` | One Strike: traits, survival, holders, history, **Verify** panel |
 | `#/desk` | `src/pages/Desk.tsx` | Listed envelopes; **Review & buy** modal with safety checks |
 | `#/wallet`, `#/wallet/:address` | `src/pages/Wallet.tsx` | Rare tokens, seal / sell preview, envelopes: list, gift, withdraw |
-| `#/rules` | `src/pages/Rules.tsx` | Plain-language explanation |
+| `#/rules` | `src/pages/Rules.tsx` | Plain-language explanation with diagrams |
 
 The header, navigation, wallet menu and footer are in `src/App.tsx`.
 
@@ -36,11 +36,17 @@ The header, navigation, wallet menu and footer are in `src/App.tsx`.
 
 | File | Contents |
 |---|---|
-| `src/components/ui.tsx` | `StrikeCoin`, `Traits`, `SegmentList`, `Addr`, `Stat`, `Bar`, `Modal`, `TypedConfirm`, transaction toasts |
-| `src/components/MintSheet.tsx` | The 794-cell grid + legend |
+| `src/components/ui.tsx` | `StrikeCoin`, `Traits`, `SegmentList`, `More`, `Addr`, `Stat`, `Bar`, `Modal`, `TypedConfirm`, transaction toasts |
+| `src/components/pixels.tsx` | Pixel trait icons and the coin shape used by the logo, coins and diagrams |
+| `src/components/WordCanvas.tsx` | The animated SEQUENTS hero word |
+| `src/components/scroll.tsx` | `ScrollLines` (pinned paragraph revealed line by line) and `useScrollSteps` |
+| `src/components/Mechanisms.tsx` | The Envelopes / Strikes / Survival cards and their diagrams |
+| `src/components/MintSheet.tsx` | The three Strike views (mint sheet, bonding curve, gradient) and the filter key |
 | `src/components/Activity.tsx` | Activity feed and the wording of every event |
 | `src/format.ts` | Number, token, SOL and address formatting; rarity tiers |
-| `src/styles.css` | **All styling.** Design tokens (colours, fonts, radius, tier colours) are at the top, with dark-mode values right below |
+| `src/styles.css` | **All styling.** Fonts are self-hosted in `src/fonts/`. Design tokens (colours, tier colours) are at the top, with dark-mode values right below |
+
+The whitepaper linked from the Overview is `public/Sequents_Whitepaper.pdf`; replace that file to update it.
 
 Data comes from `src/api.ts` (`useApi('/path')`); the response shapes are the types in that file.
 In demo mode the same calls are answered by `src/demo.ts`, so new UI can be built against demo data first.

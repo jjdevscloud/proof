@@ -835,3 +835,140 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 .pixel-loader i:nth-child(3) { animation-delay: 0.4s; }
 @keyframes loader { 0%, 60%, 100% { background: var(--frame); } 30% { background: var(--green); } }
 @media (prefers-reduced-motion: reduce) { .checks li, .pixel-loader i { animation: none; } }
+
+/* ---- the roll (from main: roll panel, odds table, rolled tiers on Strikes) ---- */
+
+/* ---- the roll (SPEC §4.5) ---- */
+.roll-coin {
+  --size: 22px;
+  vertical-align: -4px;
+  margin-right: 6px;
+  display: inline-block;
+}
+.roll-coin svg {
+  width: var(--size);
+  height: calc(var(--size) * 5 / 7);
+  fill: var(--tier);
+  display: block;
+}
+.roll-coin.t0 svg {
+  fill: var(--muted);
+}
+.roll-coin-blank svg {
+  fill: var(--frame);
+}
+.roll-coin-spin {
+  animation: roll-spin 0.5s steps(4) infinite;
+}
+@keyframes roll-spin {
+  0% { transform: scaleX(1); }
+  50% { transform: scaleX(0.15); }
+  100% { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .roll-coin-spin { animation: none; opacity: 0.6; }
+}
+.roll-badge {
+  border: 1px solid var(--tier, var(--frame));
+  color: var(--ink);
+  justify-self: start;
+  padding: 2px 8px;
+}
+.roll-badge.t3 {
+  background: var(--t3);
+  color: var(--bg);
+}
+.roll-badge.t0 {
+  border-color: var(--frame);
+  color: var(--muted);
+}
+.roll-pending {
+  border-color: var(--frame);
+}
+.roll-reveal {
+  text-align: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0 8px;
+  display: flex;
+}
+.roll-reveal .roll-coin {
+  --size: 96px;
+  margin: 0 0 8px;
+}
+.roll-name {
+  font-size: 28px;
+  line-height: 1.1;
+}
+.roll-done.t3 .roll-name,
+.roll-done.t2 .roll-name,
+.roll-done.t1 .roll-name {
+  color: var(--tier);
+}
+.roll-done.t3 .roll-name {
+  color: var(--ink);
+}
+.roll-tier {
+  color: var(--muted);
+}
+.odds {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.odds th,
+.odds td {
+  border-bottom: 1px solid var(--frame);
+  text-align: left;
+  padding: 6px 8px 6px 0;
+}
+.odds th {
+  color: var(--muted);
+  font-weight: 400;
+}
+.odds .num {
+  text-align: right;
+}
+.t1-text { color: var(--t1); }
+.t2-text { color: var(--t2); }
+.t3-text { color: var(--ink); font-weight: 600; }
+.more-odds {
+  margin-top: 14px;
+}
+.more-odds > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.roll-panel .origin-actions {
+  margin-top: 10px;
+}
+.roll-stats td,
+.roll-stats th {
+  white-space: nowrap;
+}
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.roll-recent-head {
+  margin: 28px 0 8px;
+}
+.feed-icon .roll-coin {
+  --size: 16px;
+  margin: 0;
+}
+.roll-curve-box {
+  margin: 8px 0 24px;
+}
+.roll-curve .rc-coal {
+  fill: var(--muted);
+}
+.roll-curve .rc-gone {
+  fill: #dcdcdc;
+}
+.roll-curve .rc-none {
+  fill: none;
+  stroke: var(--frame);
+  stroke-width: 1px;
+}

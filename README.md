@@ -13,7 +13,7 @@ Rules: [SPEC.md](SPEC.md) — the single source of truth.
 | `indexer/src/derive.ts` | Trait assignment from the public seed — shared by the indexer and the browser (SPEC §4) |
 | `indexer/src/reveal.ts` | Reveal file format and checks |
 | `rules/` | The approved Sequents rarity rules (template; the final file is committed on-chain) |
-| `ops/` | Launch tools: `make-commit.ts` (before the token exists), `make-reveal.ts` (after the seed point) |
+| `ops/` | Launch tools: `make-commit.ts` (before the token exists), `launch.ts` (the moment it exists), `make-reveal.ts` (after the seed point) |
 | `indexer/src/api.ts` | Read API + live change stream for the website |
 | `web/` | Website: overview, mint sheet, strike pages with in-browser verification, collector desk, wallet actions |
 
@@ -59,11 +59,14 @@ npm run build            # static site in web/dist; serve the indexer API at VIT
 Built in WSL Ubuntu (`scripts/wsl-setup.sh` installs Rust, Agave 2.1 and Anchor 0.31.1):
 
 ```sh
-bash scripts/wsl-build.sh     # anchor keys sync, MSRV-pinned Cargo.lock, anchor build, unit tests
+bash scripts/wsl-build.sh     # devnet/test build (feature "devnet"), MSRV-pinned Cargo.lock, unit tests
 bash scripts/wsl-deploy.sh    # deploy both programs with devnet/keys/payer.json
+bash scripts/wsl-mainnet-deploy.sh <SQUADS_VAULT>   # mainnet build + deploy, before the token exists
 ```
 
-Set `PROOF_MINT` in `programs/proof-vault/src/lib.rs` to the real mint before a mainnet build.
+The program does not contain the mint. It is recorded once, right after the token is created, by
+`set_mint`, which only `LAUNCH_AUTHORITY` may call (mainnet: the deployer wallet; devnet builds: the
+devnet payer).
 
 Before mainnet: an external audit and the upgrade policy in SPEC §7.
 
@@ -73,18 +76,42 @@ pump.fun is replaced by `programs/mock-curve` (same `buy` instruction name; the 
 needs its program id). Steps, from the repo root:
 
 ```sh
-cd devnet && npm install && node keys.ts        # keypairs; points PROOF_MINT at the devnet mint
+cd devnet && npm install && node keys.ts        # keypairs
 # WSL: bash scripts/wsl-build.sh && bash scripts/wsl-deploy.sh   (payer needs ~3.5 devnet SOL)
-node setup.ts                                    # fund wallets, reveal file + commit, mint, curve, vault config
+node setup.ts                                    # fund wallets, rules + commit, mint, curve, vault config, set_mint
 cd ../indexer && node src/main.ts config.devnet.json      # and config.devnet-b.json in a second terminal
 cd ../devnet && node scenario.ts && node verify.ts         # every SPEC §6 rule, both indexers, fingerprints
 node attacks.ts                                  # 17 misuse/attack cases + happy path, simulated (no state change)
 node pump-check.ts 200                           # decoder vs REAL mainnet pump.fun transactions (read-only)
 # Full pipeline on a local validator (WSL: bash scripts/wsl-localnet.sh), then with RPC_URL=http://127.0.0.1:8899:
 #   node setup.ts; start indexer with config.localnet.json (+ -b); node scenario.ts; node verify.ts
-#   node token2022-local.ts   # vault flow on a pump.fun-style Token-2022 mint
+#   node token2022-local.ts   # vault flow on a pump.fun-style Token-2022 mint (fresh validator)
+#   node launch-guard.ts      # only the launch authority can record the mint (fresh validator)
+#   node roll-local.ts        # the roll: seal & roll, roll again, rolls that must not count
+#                             # (start the indexer with RULES_FILE=../devnet/rules.localnet.json)
 ```
 
 The website shows a devnet-only "Get test tokens" panel on your own wallet page (mock curve buy).
 
-`keys.ts` rewrites `PROOF_MINT` to the devnet mint — set the real mint before any mainnet build.
+
+## Mainnet launch
+
+Everything is deployed before the token exists, so the site goes live within seconds of creation.
+
+Before launch day (once):
+1. `bash scripts/wsl-mainnet-deploy.sh <SQUADS_VAULT>` (WSL): deploy the vault program, hand upgrade authority to Squads.
+2. `node ops/init-vault.ts --program <id> --key <deployer.json>`: create the vault config account.
+
+Launch day, before the token:
+3. `node ops/make-commit.ts ... --key <reveal-authority.json> --post`: posts the commit memo and writes
+   `rules/sequents-v1.json` and the indexer `startSlot`.
+4. Commit, `railway up`. The site is still "Launching soon"; its server now watches for the mint.
+5. `cd ops && node launch.ts --watch <your creator wallet> --key <deployer.json>`: leave it running.
+
+The moment:
+6. Create the token on pump.fun. `launch.ts` sees it, checks it against the rules and records it
+   (`set_mint`); the server re-checks it and goes live, and open pages switch without a reload.
+   If `launch.ts` was not running, run it with `--mint <mint>` instead.
+
+The server keeps the launch in `/data/launch.json`. Putting the mint into `indexer/config.mainnet.json`
+later is optional.

@@ -1,4 +1,4 @@
-// Launch step 3b (after the program is deployed): create the vault's config account once.
+// Pre-launch (after the program is deployed): create the vault's config account once.
 //   node init-vault.ts --program <program id> --key <payer.json> --rpc <url>
 import { createHash } from 'node:crypto';
 import { PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction } from '@solana/web3.js';

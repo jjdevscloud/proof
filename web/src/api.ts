@@ -1,6 +1,7 @@
 // Typed client for the indexer API. All amounts/positions arrive as decimal strings.
 import { useCallback, useEffect, useState } from 'react';
 import { DEMO, demoApi } from './demo.ts';
+import type { RollRules } from '../../indexer/src/derive.ts';
 
 export const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -22,6 +23,7 @@ export type Config = {
   revealHash: string | null;
   revealed: boolean;
   pending?: boolean; // pre-launch: no token yet
+  roll?: RollRules | null; // the roll (SPEC §4.5); null if this deployment has none
 };
 
 export type Health = { syncedSlot: number; lastSlot: number; fingerprint: string; revealed: boolean };
@@ -48,6 +50,8 @@ export type Envelope = {
   status: 'sealed' | 'listed';
   price: string;
   sealedSlot: number;
+  roll: { name: string; points: number; signature: string } | null;
+  rolling: { signature: string; slot: number; seedSlot: number } | null;
   ranges: RangeJson[];
   common: string;
   segments: Segment[];
@@ -61,14 +65,23 @@ export type WalletView = {
 export type Change =
   | { kind: 'issue'; account: string; ranges: RangeJson[] }
   | { kind: 'melt'; account: string; ranges: RangeJson[]; reason: string }
-  | { kind: 'seal'; from: string; envelope: string; ranges: RangeJson[]; valid: boolean }
+  | { kind: 'seal'; from: string; envelope: string; ranges: RangeJson[]; valid: boolean; ordinary?: string }
   | { kind: 'list'; envelope: string; price: string }
   | { kind: 'cancel'; envelope: string }
   | { kind: 'sale'; envelope: string; from: string; to: string; price: string }
   | { kind: 'gift'; envelope: string; from: string; to: string }
   | { kind: 'withdraw'; envelope: string; to: string }
   | { kind: 'commit'; root: string; deadlineSlot: number }
-  | { kind: 'reveal'; fileHash: string };
+  | { kind: 'reveal'; fileHash: string }
+  | { kind: 'roll'; envelope: string; holder: string; valid: boolean; reason?: string }
+  | { kind: 'rolled'; envelope: string; holder: string; name: string; points: number; seedSlot: number; blockhash: string };
+
+export type Rolls = {
+  total: number;
+  counts: Record<string, number>;
+  held: Record<string, { count: number; listed: number; floor: string | null }>;
+  recent: { slot: number; signature: string; envelope: string; holder: string; name: string; points: number }[];
+};
 
 export type TxChanges = { slot: number; signature: string; changes: Change[] };
 

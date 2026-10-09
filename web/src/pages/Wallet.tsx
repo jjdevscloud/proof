@@ -5,6 +5,7 @@ import { useConfig, useVault } from '../App.tsx';
 import { isAddress, useWallet } from '../chain.ts';
 import { BASE, CLUSTER, feeOf, feePct, fmtTokens, lamportsFromSol, short, sol } from '../format.ts';
 import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCoin, Traits, TypedConfirm, runTx } from '../components/ui.tsx';
+import { RollAgain, RollBadge, RollPanel } from '../components/Roll.tsx';
 
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
   const wallet = useWallet();
@@ -47,6 +48,7 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
       {!data && !error && <Loading />}
       {data && (
         <>
+          {own && <RollPanel owner={address} data={data} />}
           <section className="panel">
             <div className="panel-head">
               <h2>Rare tokens in origin accounts</h2>
@@ -207,7 +209,8 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
         <span className="pill pill-seal">Envelope {short(e.address)}</span>
         {e.status === 'listed' ? <span className="price">{sol(e.price)} <small>SOL</small></span> : <span className="pill">Sealed</span>}
       </div>
-      <SegmentList segments={e.segments} empty="No rare tokens — this seal was invalid, so the contents are ordinary $PROOF." />
+      <RollBadge e={e} />
+      <SegmentList segments={e.segments} empty={e.roll || e.rolling ? 'Ordinary $PROOF, rolled.' : 'No rare Strikes: the contents are ordinary $PROOF.'} />
       {BigInt(e.common) > 0n && <p className="small muted">+ {fmtTokens(e.common)} ordinary $PROOF</p>}
       {own && (
         <div className="card-foot">
@@ -215,7 +218,8 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
             <button className="btn btn-ghost" onClick={() => runTx('Cancel listing', () => vault.cancel(e.holder, e.address))}>Cancel listing</button>
           ) : (
             <>
-              <button className="btn btn-primary" onClick={() => setMode('list')}>List on desk</button>
+              <RollAgain e={e} />
+              <button className={e.roll?.points || e.segments.length ? 'btn btn-primary' : 'btn btn-ghost'} onClick={() => setMode('list')}>List on desk</button>
               <button className="btn btn-ghost" onClick={() => setMode('gift')}>Gift</button>
               <button className="btn btn-ghost danger-text" onClick={() => setMode('withdraw')}>Withdraw…</button>
             </>

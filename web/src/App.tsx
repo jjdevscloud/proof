@@ -44,12 +44,19 @@ const NAV = [
 ] as const;
 
 export function App() {
-  const { data: config, error } = useApi<Config>('/config');
+  const { data: config, error, reload } = useApi<Config>('/config');
   // Pre-launch there is no mint, so no vault to talk to (only the Prelaunch and Rules pages render).
   const vault = useMemo(() => (config && !config.pending ? new Vault(config) : null), [config]);
   const route = useRoute();
 
   useEffect(() => subscribe(() => bumpVersion()), []);
+  // Pre-launch, check every few seconds: the moment the mint is recorded the site switches to live
+  // in place, without visitors reloading.
+  useEffect(() => {
+    if (!config?.pending) return;
+    const t = setInterval(reload, 3000);
+    return () => clearInterval(t);
+  }, [config?.pending, reload]);
 
   return (
     <>
@@ -65,7 +72,7 @@ export function App() {
         {!config && !error && <Loading what="Connecting to the ledger" />}
         {config && (vault || config.pending) && (
           <ConfigContext.Provider value={{ config, vault: vault! }}>
-            {config.pending && route[0] !== 'rules' ? <Prelaunch /> : <Page route={route} />}
+            {config.pending && route[0] !== undefined && route[0] !== 'rules' ? <Prelaunch /> : <Page route={route} />}
           </ConfigContext.Provider>
         )}
       </main>

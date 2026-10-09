@@ -8,13 +8,14 @@ import {
   createMintToInstruction, getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import {
-  T, buyEnvelopeIx, connection, envelopePdas, giftIx, key, listIx, nextEnvelopeId, sealIx, withdrawIx,
+  T, buyEnvelopeIx, connection, envelopePdas, giftIx, key, listIx, nextEnvelopeId, sealIx, setMintIx, withdrawIx,
 } from './lib.ts';
 
 // proof_vault error codes (Anchor custom errors start at 6000, in VaultError order).
 const E = {
   WrongMint: 6000, WrongHolder: 6001, WrongVault: 6002, WrongStatus: 6003, ZeroPrice: 6004, PriceChanged: 6005,
   SelfPurchase: 6006, BadRangeCount: 6007, EmptyRange: 6008, UnsortedRanges: 6009, WrongTreasury: 6012,
+  NotLaunchAuthority: 6013,
   ConstraintTokenMint: 2014, // Anchor built-in: token account has the wrong mint
 } as const;
 
@@ -53,6 +54,20 @@ const fakeForWithdraw = await fakeMintSetup(alice);
 const range = (start: bigint, len: bigint) => ({ start, len });
 
 const cases: Case[] = [
+  {
+    name: 'someone other than the launch authority records a mint',
+    setup: [],
+    attack: [setMintIx(alice.publicKey, mint, alice.publicKey)],
+    signers: [payer, alice],
+    expect: 'any', // after setup the record exists; launch-guard.ts checks NotLaunchAuthority on a fresh chain
+  },
+  {
+    name: 'the launch authority records a second mint',
+    setup: [],
+    attack: [setMintIx(payer.publicKey, mint, payer.publicKey)],
+    signers: [payer],
+    expect: 'any', // the mint record already exists, so creating it again fails
+  },
   {
     name: 'seal an envelope of a lookalike token (fake mint)',
     setup: fakeForSeal.ixs,

@@ -11,7 +11,10 @@
   "pumpProgramId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
   "pumpNonBuyInstructions": [
     "migrate",
-    "withdraw"
+    "migrate_v2",
+    "migrate_v3",
+    "withdraw",
+    "withdraw_v2"
   ],
   "vaultProgramId": "SET_ME",
   "revealAuthority": "SET_ME",

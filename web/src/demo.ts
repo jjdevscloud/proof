@@ -4,7 +4,7 @@ import { PublicKey } from '@solana/web3.js';
 import { deriveTraits, parseRules } from '../../indexer/src/derive.ts';
 import rulesTemplate from '../../rules/sequents-v1.template.json';
 import type {
-  Config, Envelope, Health, Preview, RangeJson, RevealStatus, Segment, Stats, StrikeDetail, StrikeRow, TxChanges, WalletView,
+  Config, Envelope, Health, Preview, RangeJson, RevealStatus, Rolls, Segment, Stats, StrikeDetail, StrikeRow, TxChanges, WalletView,
 } from './api.ts';
 
 export const DEMO = import.meta.env.VITE_DEMO === '1';
@@ -63,14 +63,27 @@ const envelopes: Envelope[] = rare.slice(0, 9).map((n, i) => ({
   status: i % 3 === 2 ? 'sealed' : 'listed',
   price: i % 3 === 2 ? '0' : price(n),
   sealedSlot: 453_500_000 + i * 977,
+  roll: null,
+  rolling: null,
   ranges: [strikeRange(n)],
   common: '0',
   segments: [seg(n)],
 }));
-envelopes.push({
-  address: addr(150), vault: addr(250), holder: DEMO_WALLET, status: 'sealed', price: '0', sealedSlot: 453_600_000,
-  ranges: [], common: (10n * T).toString(), segments: [],
-});
+// Rolled envelopes of ordinary $PROOF (SPEC §4.5).
+const rolledTier = (name: string) => {
+  const t = rules.roll!.tiers.find((x) => x.name === name) ?? rules.roll!.fallback;
+  return { name: t.name, points: t.points, signature: addr(970) };
+};
+envelopes.push(
+  { address: addr(150), vault: addr(250), holder: DEMO_WALLET, status: 'sealed', price: '0', sealedSlot: 453_600_000,
+    roll: rolledTier('Coal'), rolling: null, ranges: [], common: (120_000n * T).toString(), segments: [] },
+  { address: addr(151), vault: addr(251), holder: addr(351), status: 'listed', price: '4200000000', sealedSlot: 453_610_000,
+    roll: rolledTier('Pattern'), rolling: null, ranges: [], common: (50_000n * T).toString(), segments: [] },
+  { address: addr(152), vault: addr(252), holder: addr(352), status: 'listed', price: '650000000', sealedSlot: 453_620_000,
+    roll: rolledTier('Mint Run'), rolling: null, ranges: [], common: (75_000n * T).toString(), segments: [] },
+  { address: addr(153), vault: addr(253), holder: DEMO_WALLET, status: 'sealed', price: '0', sealedSlot: 453_630_000,
+    roll: rolledTier('Second Strike'), rolling: null, ranges: [], common: (50_000n * T).toString(), segments: [] },
+);
 
 const wallet: WalletView = {
   accounts: [
@@ -114,6 +127,25 @@ const activity: TxChanges[] = Array.from({ length: 40 }, (_, i) => {
   ][i % 6] as TxChanges['changes'];
   return { slot, signature, changes: kinds };
 });
+activity.unshift(
+  { slot: 453_700_200, signature: addr(980), changes: [{ kind: 'rolled', envelope: addr(151), holder: addr(351), name: 'Pattern', points: 85, seedSlot: 453_700_200, blockhash: BLOCKHASH }] },
+  { slot: 453_700_198, signature: addr(980), changes: [{ kind: 'seal', from: addr(451), envelope: addr(151), ranges: [], valid: false, ordinary: (50_000n * T).toString() }, { kind: 'roll', envelope: addr(151), holder: addr(351), valid: true }] },
+  { slot: 453_700_150, signature: addr(981), changes: [{ kind: 'rolled', envelope: addr(150), holder: DEMO_WALLET, name: 'Coal', points: 0, seedSlot: 453_700_150, blockhash: BLOCKHASH }] },
+);
+const rolls: Rolls = {
+  total: 412,
+  counts: { Coal: 361, Assay: 17, 'Mint Run': 12, Reissue: 8, Recoinage: 6, 'Second Strike': 4, Restrike: 2, Overstrike: 1, Pattern: 1 },
+  held: {
+    Coal: { count: 140, listed: 0, floor: null }, Assay: { count: 15, listed: 4, floor: '180000000' }, 'Mint Run': { count: 11, listed: 2, floor: '650000000' },
+    Reissue: { count: 8, listed: 1, floor: '900000000' }, Recoinage: { count: 5, listed: 0, floor: null }, 'Second Strike': { count: 4, listed: 1, floor: '1600000000' },
+    Restrike: { count: 2, listed: 0, floor: null }, Overstrike: { count: 1, listed: 0, floor: null }, Pattern: { count: 1, listed: 1, floor: '4200000000' },
+  },
+  recent: [
+    { slot: 453_700_200, signature: addr(980), envelope: addr(151), holder: addr(351), name: 'Pattern', points: 85 },
+    { slot: 453_700_150, signature: addr(981), envelope: addr(150), holder: DEMO_WALLET, name: 'Coal', points: 0 },
+    { slot: 453_699_900, signature: addr(982), envelope: addr(152), holder: addr(352), name: 'Mint Run', points: 15 },
+  ],
+};
 activity.push({ slot: 453_400_000, signature: addr(990), changes: [{ kind: 'reveal', fileHash: 'ab'.repeat(32) }] });
 activity.push({ slot: 453_000_000, signature: addr(991), changes: [{ kind: 'commit', root: 'cd'.repeat(32), deadlineSlot: 455_000_000 }] });
 
@@ -121,7 +153,7 @@ const config: Config = {
   mint: addr(1), vaultProgramId: addr(2), curveTokenAccount: addr(3), curveProgramId: addr(4), revealAuthority: addr(5),
   treasury: addr(6), feeBps: 150,
   strikeCount: 794, strikeSize: STRIKE.toString(), saleableSupply: (793_100_000n * T).toString(),
-  commitRoot: 'demo', revealHash: 'ab'.repeat(32), revealed: true, pending: false,
+  commitRoot: 'demo', revealHash: 'ab'.repeat(32), revealed: true, pending: false, roll: rules.roll,
 };
 
 const reveal: RevealStatus = {
@@ -161,6 +193,7 @@ export function demoApi(path: string): unknown {
     case 'wallet': return wallet;
     case 'activity': return activity.slice(0, Number(url.searchParams.get('limit') ?? 50));
     case 'reveal': return reveal;
+    case 'rolls': return rolls;
     case 'rules': return { final: true, rules: JSON.parse(rulesText) };
     case 'preview': {
       const amount = BigInt(url.searchParams.get('amount') ?? '0');

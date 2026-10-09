@@ -32,8 +32,9 @@ export function describe(ch: Change, strikeSize: bigint): { icon: string; tone: 
     case 'melt':
       return { icon: '♨', tone: 'melt', text: `${fmtTokens(total(ch.ranges))} of Strike ${strikesIn(ch.ranges, strikeSize)} melted, ${MELT_REASONS[ch.reason] ?? ch.reason}` };
     case 'seal':
-      return ch.valid
-        ? { icon: '▣', tone: 'seal', text: `Strike ${strikesIn(ch.ranges, strikeSize)} sealed into envelope ${short(ch.envelope)}` }
+      if (ch.valid) return { icon: '▣', tone: 'seal', text: `Strike ${strikesIn(ch.ranges, strikeSize)} sealed into envelope ${short(ch.envelope)}` };
+      return ch.ordinary
+        ? { icon: '▢', tone: 'seal', text: `${fmtTokens(ch.ordinary)} ordinary $PROOF sealed into envelope ${short(ch.envelope)}` }
         : { icon: '▢', tone: 'melt', text: `Invalid seal into ${short(ch.envelope)}, contents are ordinary $PROOF` };
     case 'list':
       return { icon: '⌂', tone: 'desk', text: `Envelope ${short(ch.envelope)} listed for ${sol(ch.price)} SOL` };
@@ -49,13 +50,21 @@ export function describe(ch: Change, strikeSize: bigint): { icon: string; tone: 
       return { icon: '⚿', tone: 'seal', text: `Trait commitment posted on-chain (${ch.root.slice(0, 10)}…)` };
     case 'reveal':
       return { icon: '✦', tone: 'issue', text: 'Traits revealed and verified against the commitment' };
+    case 'roll':
+      return ch.valid
+        ? { icon: '⟳', tone: 'seal', text: `Envelope ${short(ch.envelope)} rolled` }
+        : { icon: '⟳', tone: 'melt', text: `Roll on envelope ${short(ch.envelope)} not counted: ${ch.reason}` };
+    case 'rolled':
+      return ch.points > 0
+        ? { icon: '✦', tone: 'issue', text: `Envelope ${short(ch.envelope)} rolled ${ch.name}` }
+        : { icon: '·', tone: 'melt', text: `Envelope ${short(ch.envelope)} rolled ${ch.name}` };
   }
 }
 
 export function ActivityFeed({ items, empty = 'No activity yet.' }: { items: TxChanges[]; empty?: string }) {
   const config = useConfig();
   const size = BigInt(config.strikeSize);
-  const rows = items.flatMap((tx) => tx.changes.map((ch, i) => ({ tx, ch, key: `${tx.signature}-${i}` })));
+  const rows = items.flatMap((tx) => tx.changes.map((ch, i) => ({ tx, ch, key: `${tx.slot}-${tx.signature}-${i}-${ch.kind}` })));
   if (!rows.length) return <p className="muted small">{empty}</p>;
   return (
     <ul className="feed">
@@ -95,6 +104,10 @@ const FEED_ICONS: Record<string, string[]> = {
   '⚿': ['..###..', '.#...#.', '.#...#.', '#######', '###.###', '###.###', '#######'],
   // traits revealed: a spark
   '✦': ['...#...', '...#...', '..###..', '#######', '..###..', '...#...', '...#...'],
+  // a roll: a turning arrow
+  '⟳': ['..####.', '.#....#', '#....##', '#......', '#......', '.#....#', '..####.'],
+  // a roll that landed on nothing: a single dot
+  '·': ['.......', '.......', '.......', '...#...', '.......', '.......', '.......'],
 };
 
 function FeedIcon({ glyph }: { glyph: string }) {

@@ -54,3 +54,31 @@ test('respects the window size', async () => {
   assert.equal(await f.syncOnce(() => {}), 1);
   assert.equal(f.syncedSlot, 10);
 });
+
+test('a pending roll settles with the first block at or after its seed slot, before later transactions', async () => {
+  const { Ledger } = await import('../src/ledger.ts');
+  const { parseRules, rollResult } = await import('../src/derive.ts');
+  const { readFileSync } = await import('node:fs');
+  const T = 1_000_000n;
+  const roll = parseRules(readFileSync(new URL('../../rules/sequents-v1.template.json', import.meta.url), 'utf8').replace('"deadlineSlot": 0', '"deadlineSlot": 1')).roll!;
+  const ledger = new Ledger({ curveTokenAccount: CURVE, saleableSupply: 793_100_000n * T, strikeSize: 1_000_000n * T, roll });
+  const amount = 50_000n * T;
+  const big = 1n << 62n;
+  const txs: FakeTx[] = [
+    { slot: 10, signature: 'seal-roll', touches: [roll.treasury, 'VAULT'], pre: [obs('A', amount)], post: [obs('A', 0n), { account: 'V1', owner: 'E1', balance: amount }],
+      events: [
+        { kind: 'lamports', from: 'alice', to: roll.treasury, lamports: BigInt(roll.feeLamports) },
+        { kind: 'seal', from: 'A', holder: 'alice', envelope: 'E1', vault: 'V1', ranges: [{ start: big, end: big + amount }], amount },
+        { kind: 'roll', envelope: 'E1' },
+      ] },
+    // Slots 11 and 12 skipped: the seed block (first at or after 12) is 13, so the roll settles
+    // before this listing is applied.
+    { slot: 13, signature: 'list', touches: ['VAULT'], pre: [], post: [], events: [{ kind: 'list', envelope: 'E1', price: 5n }] },
+  ];
+  const rpc = { ...fakeRpc(txs, 20), firstBlockFrom: async (slot: number) => (slot <= 13 ? { slot: 13, blockhash: 'HASH13' } : { slot, blockhash: `HASH${slot}` }) };
+  const f = new Follower(ledger, passthrough as any, rpc as any, { ...cfg, rollTreasury: roll.treasury }, 0);
+  const seen: string[] = [];
+  await f.syncOnce((c) => seen.push(`${c.signature}:${c.changes.map((x) => x.kind).join(',')}`));
+  assert.deepEqual(seen, ['seal-roll:seal,roll', 'seal-roll:rolled', 'list:list']);
+  assert.deepEqual(ledger.envelopes.get('E1')!.roll, { ...rollResult(roll, 'seal-roll', 'HASH13'), signature: 'seal-roll' });
+});

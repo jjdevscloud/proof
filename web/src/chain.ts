@@ -8,6 +8,8 @@ import {
 } from '@solana/spl-token';
 import { useSyncExternalStore } from 'react';
 import type { Config } from './api.ts';
+import { rollResult } from '../../indexer/src/derive.ts';
+import type { RollResult } from '../../indexer/src/derive.ts';
 import { DEMO, DEMO_WALLET } from './demo.ts';
 
 // Production builds use '/rpc': the site's own server forwards a restricted set of methods, so the
@@ -198,6 +200,9 @@ function u32(n: number): Uint8Array {
 function concat(...parts: Uint8Array[]): Buffer {
   return Buffer.concat(parts.map((p) => Buffer.from(p)));
 }
+const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+// Declared start of an ordinary seal: far past the saleable supply (SPEC §4.5).
+export const ORDINARY_START = 1n << 62n;
 const w = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
 const r = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: false });
 
@@ -218,6 +223,10 @@ export class Vault {
   configPda(): PublicKey {
     return PublicKey.findProgramAddressSync([Buffer.from('config')], this.programId)[0];
   }
+  mintRecordPda() {
+    return PublicKey.findProgramAddressSync([Buffer.from('mint')], this.programId)[0];
+  }
+
   envelopePda(id: bigint): PublicKey {
     return PublicKey.findProgramAddressSync([Buffer.from('envelope'), Buffer.from(u64(id))], this.programId)[0];
   }
@@ -245,10 +254,83 @@ export class Vault {
       programId: this.programId,
       keys: [
         w(new PublicKey(holder), true), w(this.configPda()), w(envelope), w(this.vaultPda(envelope)),
-        w(new PublicKey(source)), r(this.mint), r(tokenProgram), r(SystemProgram.programId),
+        w(new PublicKey(source)), r(this.mint), r(tokenProgram), r(SystemProgram.programId), r(this.mintRecordPda()),
       ],
       data,
     })]);
+  }
+
+  // ---- the roll (SPEC §4.5) ----
+
+  // Fee to the treasury plus the roll memo. The ledger counts it only if the holder pays.
+  private rollIxs(holder: string, envelope: PublicKey): TransactionInstruction[] {
+    const roll = this.config.roll;
+    if (!roll) throw new Error('Rolling is not enabled');
+    const payer = new PublicKey(holder);
+    return [
+      SystemProgram.transfer({ fromPubkey: payer, toPubkey: new PublicKey(roll.treasury), lamports: BigInt(roll.feeLamports) }),
+      new TransactionInstruction({ programId: MEMO_PROGRAM, keys: [r(payer, true)], data: Buffer.from(`proof:v1:roll:${envelope.toBase58()}`) }),
+    ];
+  }
+
+  // Seals `amount` ordinary $PROOF from `source` into a new envelope and rolls it, in one transaction.
+  // The declared range lies past the saleable supply, which marks the contents as ordinary.
+  async sealAndRoll(holder: string, source: string, amount: bigint): Promise<string> {
+    if (DEMO) return this.send(holder, []);
+    const info = await connection.getAccountInfo(this.configPda());
+    if (!info) throw new Error('Vault program is not initialized');
+    const envelope = this.envelopePda(info.data.readBigUInt64LE(8));
+    const tokenProgram = await this.tokenProgram();
+    const data = concat(await disc('seal'), u32(1), u64(ORDINARY_START), u64(amount));
+    return this.send(holder, [
+      new TransactionInstruction({
+        programId: this.programId,
+        keys: [
+          w(new PublicKey(holder), true), w(this.configPda()), w(envelope), w(this.vaultPda(envelope)),
+          w(new PublicKey(source)), r(this.mint), r(tokenProgram), r(SystemProgram.programId), r(this.mintRecordPda()),
+        ],
+        data,
+      }),
+      ...this.rollIxs(holder, envelope),
+    ]);
+  }
+
+  // Rolls an existing envelope of ordinary $PROOF again.
+  async roll(holder: string, envelope: string): Promise<string> {
+    return this.send(holder, this.rollIxs(holder, new PublicKey(envelope)));
+  }
+
+  // The wallet's main token account and its balance (0 if it has none).
+  async mainTokenAccount(owner: string): Promise<{ account: string; balance: bigint }> {
+    if (DEMO) return { account: 'demo-main-account', balance: 250_000_000_000n };
+    const tokenProgram = await this.tokenProgram();
+    const account = getAssociatedTokenAddressSync(this.mint, new PublicKey(owner), false, tokenProgram);
+    const info = await connection.getAccountInfo(account);
+    const balance = info ? unpackAccount(account, info, tokenProgram).amount : 0n;
+    return { account: account.toBase58(), balance };
+  }
+
+  // Waits for the roll's seed block (first confirmed block at or after its slot + delay) and
+  // computes the result in the browser, with the same code the indexer uses.
+  async rollOutcome(signature: string): Promise<RollResult> {
+    const roll = this.config.roll;
+    if (!roll) throw new Error('Rolling is not enabled');
+    if (DEMO) {
+      await new Promise((res) => setTimeout(res, 1200));
+      return rollResult(roll, `demo-${Date.now()}`, 'demo');
+    }
+    const status = (await connection.getSignatureStatuses([signature])).value[0];
+    if (!status) throw new Error('Roll transaction not found');
+    const seedSlot = status.slot + roll.seedDelaySlots;
+    for (let i = 0; i < 60; i++) {
+      const slots = await connection.getBlocks(seedSlot, seedSlot + 100, 'confirmed');
+      if (slots.length) {
+        const block = await connection.getBlock(slots[0], { commitment: 'confirmed', transactionDetails: 'none', rewards: false, maxSupportedTransactionVersion: 0 });
+        if (block) return rollResult(roll, signature, block.blockhash);
+      }
+      await new Promise((res) => setTimeout(res, 500));
+    }
+    throw new Error('Seed block not confirmed yet; your result will appear on the envelope shortly');
   }
 
   async list(holder: string, envelope: string, lamports: bigint): Promise<string> {
@@ -367,9 +449,37 @@ export class Vault {
     }
     const declared = merged.map((x) => `${x.start}-${x.end}`).join(',');
     const ledger = expect.ranges.map((x) => `${x.start}-${x.end}`).join(',');
-    add('Ledger confirms the seller really held these tokens', declared === ledger,
-      declared === ledger ? 'Sealed ranges are intact' : 'Invalid seal — the contents are ordinary $PROOF');
+    const saleable = BigInt(this.config.saleableSupply);
+    if (!expect.ranges.length && merged.length && merged.every((x) => x.start >= saleable)) {
+      add('Sealed as ordinary $PROOF (no rare Strikes claimed)', true, 'contents are ordinary $PROOF');
+    } else {
+      add('Ledger confirms the seller really held these tokens', declared === ledger,
+        declared === ledger ? 'Sealed ranges are intact' : 'Invalid seal — the contents are ordinary $PROOF');
+    }
     return checks;
+  }
+
+  // Recomputes a settled roll from the chain: the roll's slot, its seed block, and the result.
+  async verifyRoll(signature: string, expectName: string): Promise<Check> {
+    const label = `Rolled tier ${expectName} recomputed in your browser`;
+    const roll = this.config.roll;
+    if (DEMO) return { label, ok: true, detail: 'demo' };
+    if (!roll) return { label, ok: false, detail: 'rolling is not enabled' };
+    const st = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+    if (!st || st.err) return { label, ok: false, detail: 'roll transaction not found' };
+    const slots = await connection.getBlocks(st.slot + roll.seedDelaySlots, st.slot + roll.seedDelaySlots + 100, 'finalized');
+    if (!slots.length) return { label, ok: false, detail: 'seed block not finalized yet' };
+    const block = await connection.getBlock(slots[0], { commitment: 'finalized', transactionDetails: 'none', rewards: false, maxSupportedTransactionVersion: 0 });
+    if (!block) return { label, ok: false, detail: 'seed block unavailable' };
+    const got = rollResult(roll, signature, block.blockhash);
+    return { label, ok: got.name === expectName, detail: `seed block ${slots[0]}` };
+  }
+
+  // Slot of the most recent transaction touching `account` (0 if none).
+  async lastActivitySlot(account: string): Promise<number> {
+    if (DEMO) return 0;
+    const [last] = await connection.getSignaturesForAddress(new PublicKey(account), { limit: 1 }, 'confirmed');
+    return last?.slot ?? 0;
   }
 }
 

@@ -13,7 +13,20 @@ export type Rules = {
   dates: DateTier[]; // positional tiers, non-overlapping
   defaultDate: { name: string; points: number };
   errors: ErrorTrait[]; // random, at most one per Strike, assigned in this order
+  roll?: RollRules;
 };
+// The roll (SPEC §4.5): an envelope of ordinary $PROOF pays a small SOL fee for one random draw
+// from these tiers. No caps: every roll has the same odds.
+export type RollTier = { name: string; points: number; odds: number }; // odds per million rolls
+export type RollRules = {
+  minEntry: string; // base units of ordinary $PROOF the envelope must hold
+  feeLamports: string; // paid to the treasury in the roll transaction
+  treasury: string;
+  seedDelaySlots: number; // the seed block is the first block at or after roll slot + this
+  tiers: RollTier[]; // rarest first
+  fallback: { name: string; points: number }; // everything not hit by a tier
+};
+export type RollResult = { name: string; points: number };
 export type StrikeTraits = { strike: number; rank: number; traits: string[] };
 
 export class RulesError extends Error {}
@@ -56,12 +69,44 @@ export function parseRules(text: string): Rules {
     int(e.count, `${e.name}.count`, 1);
     int(e.points, `${e.name}.points`);
   }
+  if (r.roll !== undefined) {
+    const x = r.roll;
+    const dec = (v: unknown, what: string) => {
+      if (typeof v !== 'string' || !/^[1-9][0-9]*$/.test(v)) throw new RulesError(`roll.${what} must be a positive decimal string`);
+    };
+    dec(x.minEntry, 'minEntry');
+    dec(x.feeLamports, 'feeLamports');
+    if (typeof x.treasury !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x.treasury)) throw new RulesError('roll.treasury must be an address');
+    int(x.seedDelaySlots, 'roll.seedDelaySlots', 1);
+    if (!Array.isArray(x.tiers) || !x.tiers.length) throw new RulesError('roll.tiers must be a non-empty list');
+    let odds = 0;
+    for (const t of x.tiers) {
+      name(t.name);
+      int(t.points, `${t.name}.points`);
+      int(t.odds, `${t.name}.odds`, 1);
+      odds += t.odds;
+    }
+    if (odds > 1_000_000) throw new RulesError('roll tier odds add up to more than 1,000,000');
+    name(x.fallback?.name);
+    int(x.fallback.points, 'roll.fallback.points');
+  }
   return r;
 }
 
 // Seed = sha256("sequents:v1:seed|" + blockhash) where blockhash is the base58 hash of the seed block.
 export function seedFrom(blockhash: string): Uint8Array {
   return sha256(utf8(`sequents:v1:seed|${blockhash}`));
+}
+
+// One roll's result: sha256("sequents:v1:roll|<roll signature>|<seed blockhash>") picks a number in
+// [0, 1,000,000); the tiers take consecutive slices of that interval by their odds, rarest first.
+export function rollResult(rules: RollRules, signature: string, blockhash: string): RollResult {
+  let x = new Stream(sha256(utf8(`sequents:v1:roll|${signature}|${blockhash}`))).below(1_000_000);
+  for (const t of rules.tiers) {
+    if (x < t.odds) return { name: t.name, points: t.points };
+    x -= t.odds;
+  }
+  return { ...rules.fallback };
 }
 
 // Deterministic, uniform random integers from SHA-256 in counter mode, with rejection sampling.

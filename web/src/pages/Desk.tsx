@@ -12,6 +12,7 @@ import { useWallet } from '../chain.ts';
 import { feeOf, feePct, fmtRange, fmtTokens, short, sol } from '../format.ts';
 import { matches, verifyReveal } from '../verify.ts';
 import { Addr, ErrorNote, Loading, Modal, SegmentList, Traits, runTx } from '../components/ui.tsx';
+import { RollBadge } from '../components/Roll.tsx';
 
 type Order = 'low' | 'high';
 const TRAIT_NAMES = ['Genesis', 'Key Date', 'Final Strike', 'Common Date', 'Double Die', 'Wrong Planchet', 'Off Center', 'Clipped Planchet', 'Die Crack'];
@@ -103,6 +104,8 @@ function BuyModal({ envelope, onClose }: { envelope: Envelope; onClose: () => vo
     setErr(null);
     try {
       const list = await vault.checkEnvelope(envelope.address, { holder: envelope.holder, price: envelope.price, ranges: envelope.ranges });
+      if (envelope.roll) list.push(await vault.verifyRoll(envelope.roll.signature, envelope.roll.name));
+      if (envelope.rolling) list.push({ label: 'No roll in progress', ok: false, detail: 'wait a few seconds for the roll to settle' });
       const v = await verifyReveal(config);
       if (v.traits) {
         list.push({ label: 'Reveal verified against the commitment and the seed block', ok: v.ok, detail: '' });
@@ -208,7 +211,8 @@ function EnvelopeCard({ envelope: e }: { envelope: Envelope }) {
       {/* What is inside, as one labelled list. DRAFT labels, awaiting Harriet's approval. */}
       <dl className="post-details">
         <dt>Envelope</dt><dd>{short(e.address)}</dd>
-        {!e.segments.length && <><dt>Inside</dt><dd className="muted">No rare tokens — this envelope's seal was invalid.</dd></>}
+        {(e.roll || e.rolling) && <><dt>Rolled</dt><dd><RollBadge e={e} /></dd></>}
+        {!e.segments.length && <><dt>Inside</dt><dd className="muted">{e.roll ? 'Ordinary $PROOF carrying a rolled tier.' : 'No rare Strikes: the contents are ordinary $PROOF.'}</dd></>}
         {e.segments.map((s) => {
           const amount = BigInt(s.end) - BigInt(s.start);
           const whole = amount === 1_000_000_000_000n;

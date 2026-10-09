@@ -32,12 +32,13 @@ export type ApiState = {
   rulesText?: string; // the rarity rules (committed file, or the template before launch)
 };
 
-const API_ROUTES = new Set(['health', 'config', 'rules', 'stats', 'wallet', 'strike', 'strikes', 'envelopes', 'envelope', 'activity', 'preview', 'reveal', 'stream']);
+const API_ROUTES = new Set(['health', 'config', 'rules', 'stats', 'wallet', 'strike', 'strikes', 'envelopes', 'envelope', 'activity', 'preview', 'reveal', 'rolls', 'stream']);
 
 // What the website needs from Solana, and nothing heavier: no transaction-history or full-block queries.
 const RPC_METHODS = new Set([
   'getLatestBlockhash', 'getAccountInfo', 'getMultipleAccounts', 'getBalance', 'getMinimumBalanceForRentExemption',
   'sendTransaction', 'simulateTransaction', 'getSignatureStatuses', 'getBlocks', 'getBlock', 'getSlot', 'getBlockHeight',
+  'getSignaturesForAddress', // limit 1 only: has the indexer caught up with this account?
 ]);
 const RPC_PER_MINUTE = 300;
 
@@ -92,6 +93,7 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
             revealHash: l.revealHash,
             revealed: !!l.reveal,
             pending: !!state.pending,
+            roll: l.config.roll ?? null,
           });
         case 'rules': {
           if (!state.rulesText) return send(404, { error: 'rules not available' });
@@ -155,6 +157,25 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
           const { rules, seedSlot, blockhash } = l.reveal;
           return send(200, { ...status, rules, seedSlot, blockhash });
         }
+        case 'rolls': {
+          // Settled rolls, newest first, and how often each result has come up.
+          const rolled = history.flatMap((c) => c.changes.filter((ch) => ch.kind === 'rolled').map((ch) => ({ slot: c.slot, signature: c.signature, ...ch })));
+          const counts: Record<string, number> = {};
+          for (const r of rolled) counts[(r as any).name] = (counts[(r as any).name] ?? 0) + 1;
+          const limit = Math.min(Number(url.searchParams.get('limit') ?? 30) || 30, 200);
+          // Envelopes carrying each result now (withdrawn ones are gone), listings and the cheapest.
+          const held: Record<string, { count: number; listed: number; floor: bigint | null }> = {};
+          for (const e of l.envelopes.values()) {
+            if (!e.roll) continue;
+            const h = (held[e.roll.name] ??= { count: 0, listed: 0, floor: null });
+            h.count++;
+            if (e.status === 'listed') {
+              h.listed++;
+              if (h.floor === null || e.price < h.floor) h.floor = e.price;
+            }
+          }
+          return send(200, { total: rolled.length, counts, held, recent: rolled.slice(-limit).reverse() });
+        }
         case 'stream':
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });
           res.write(': connected\n\n');
@@ -191,7 +212,7 @@ function traitsFor<T extends { strike: number }>(l: Ledger, segs: T[]) {
 function withTraits(l: Ledger, w: ReturnType<Ledger['wallet']>) {
   return {
     accounts: w.accounts.map((a) => ({ ...a, common: l.holdings.get(a.account)?.melted ?? 0n, segments: traitsFor(l, a.segments) })),
-    envelopes: w.envelopes.map((e) => ({ ...e, common: l.holdings.get(e.vault)?.melted ?? 0n, segments: traitsFor(l, e.segments) })),
+    envelopes: w.envelopes.map((e) => ({ ...e, ranges: l.holdings.get(e.vault)?.ranges ?? [], common: l.holdings.get(e.vault)?.melted ?? 0n, segments: traitsFor(l, e.segments) })),
   };
 }
 
@@ -248,7 +269,7 @@ function stats(l: Ledger) {
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
-  '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain',
+  '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain', '.pdf': 'application/pdf',
 };
 
 async function serveStatic(res: ServerResponse, dir: string, pathname: string) {
@@ -303,6 +324,9 @@ async function proxyRpc(req: IncomingMessage, res: ServerResponse, upstream: str
   }
   if (Array.isArray(body) || !RPC_METHODS.has(body?.method)) {
     return reply(403, { jsonrpc: '2.0', id: body?.id ?? null, error: { code: -32601, message: 'method not allowed by this proxy' } });
+  }
+  if (body.method === 'getSignaturesForAddress' && !(Number(body.params?.[1]?.limit) >= 1 && Number(body.params?.[1]?.limit) <= 1)) {
+    return reply(403, { jsonrpc: '2.0', id: body.id, error: { code: -32602, message: 'getSignaturesForAddress is limited to limit: 1' } });
   }
   if (body.method === 'getBlock' && body.params?.[1]?.transactionDetails !== 'none') {
     return reply(403, { jsonrpc: '2.0', id: body.id, error: { code: -32602, message: 'getBlock is limited to transactionDetails: none' } });

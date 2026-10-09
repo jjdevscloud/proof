@@ -3,7 +3,8 @@ import * as R from './ranges.ts';
 import type { Range, Segment } from './ranges.ts';
 import { sha256 } from './reveal.ts';
 import type { RevealData } from './reveal.ts';
-import { deriveTraits, parseRules } from './derive.ts';
+import { deriveTraits, parseRules, rollResult } from './derive.ts';
+import type { RollResult, RollRules } from './derive.ts';
 
 // The seed block comes this many slots after the curve sells its last position (SPEC §4.3).
 export const SEED_DELAY_SLOTS = 150;
@@ -12,6 +13,7 @@ export type LedgerConfig = {
   curveTokenAccount: string;
   saleableSupply: bigint; // S, base units
   strikeSize: bigint; // base units
+  roll?: RollRules; // from the rules file; must equal the committed rules' roll section
 };
 
 export type Holding = { owner: string | null; melted: bigint; ranges: Range[] };
@@ -24,6 +26,8 @@ export type Envelope = {
   status: EnvelopeStatus;
   price: bigint; // lamports, 0 unless listed
   sealedSlot: number;
+  roll: (RollResult & { signature: string }) | null; // latest roll result (SPEC §4.5)
+  rolling: { signature: string; slot: number; seedSlot: number } | null; // paid roll awaiting its seed block
 };
 
 export type Observation = { account: string; owner: string; balance: bigint };
@@ -34,13 +38,16 @@ export type LedgerEvent =
   | { kind: 'curveBuy'; to: string; amount: bigint }
   | { kind: 'transfer'; from: string; to: string; amount: bigint }
   | { kind: 'burn'; from: string; amount: bigint }
+  | { kind: 'donate'; from: string; amount: bigint } // into the curve token account outside a pump.fun instruction
   | { kind: 'ownerChange'; account: string; newOwner: string }
   | { kind: 'seal'; from: string; holder: string; envelope: string; vault: string; ranges: Range[]; amount: bigint }
   | { kind: 'list'; envelope: string; price: bigint }
   | { kind: 'cancel'; envelope: string }
   | { kind: 'sale'; envelope: string; buyer: string }
   | { kind: 'gift'; envelope: string; to: string }
-  | { kind: 'withdraw'; envelope: string; to: string; amount: bigint };
+  | { kind: 'withdraw'; envelope: string; to: string; amount: bigint }
+  | { kind: 'roll'; envelope: string } // memo proof:v1:roll:<envelope>
+  | { kind: 'lamports'; from: string; to: string; lamports: bigint }; // system transfer to the roll treasury
 
 export type DecodedTx = {
   slot: number;
@@ -55,14 +62,16 @@ export type MeltReason = 'transfer' | 'sellBack' | 'burn' | 'ownerChange' | 'inv
 export type Change =
   | { kind: 'issue'; account: string; ranges: Range[] }
   | { kind: 'melt'; account: string; ranges: Range[]; reason: MeltReason }
-  | { kind: 'seal'; from: string; envelope: string; ranges: Range[]; valid: boolean }
+  | { kind: 'seal'; from: string; envelope: string; ranges: Range[]; valid: boolean; ordinary?: bigint }
   | { kind: 'list'; envelope: string; price: bigint }
   | { kind: 'cancel'; envelope: string }
   | { kind: 'sale'; envelope: string; from: string; to: string; price: bigint }
   | { kind: 'gift'; envelope: string; from: string; to: string }
   | { kind: 'withdraw'; envelope: string; to: string }
   | { kind: 'commit'; root: string; deadlineSlot: number }
-  | { kind: 'reveal'; fileHash: string };
+  | { kind: 'reveal'; fileHash: string }
+  | { kind: 'roll'; envelope: string; holder: string; valid: boolean; reason?: string }
+  | { kind: 'rolled'; envelope: string; holder: string; name: string; points: number; seedSlot: number; blockhash: string };
 
 export type TxChanges = { slot: number; signature: string; changes: Change[] };
 
@@ -89,6 +98,9 @@ export class Ledger {
   private registered = new Map<string, RevealData>();
   private changes: Change[] = [];
   private touched = new Set<string>();
+  private rollFees = new Map<string, bigint>(); // lamports paid to the roll treasury in the current tx, by payer
+  private rolledInTx = false;
+  private currentSignature = '';
 
   constructor(config: LedgerConfig) {
     this.config = config;
@@ -132,9 +144,15 @@ export class Ledger {
   // Applies one finalized, successful transaction. Throws LedgerError on any inconsistency;
   // the caller must then halt and restore from a snapshot.
   applyTx(tx: DecodedTx): TxChanges {
+    this.currentSignature = tx.signature;
     if (tx.slot < this.lastSlot) throw new LedgerError(`tx ${tx.signature} at slot ${tx.slot} is before ${this.lastSlot}`);
     this.changes = [];
     this.touched = new Set();
+    this.rollFees = new Map();
+    this.rolledInTx = false;
+    for (const ev of tx.events) {
+      if (ev.kind === 'lamports' && ev.to === this.config.roll?.treasury) this.rollFees.set(ev.from, (this.rollFees.get(ev.from) ?? 0n) + ev.lamports);
+    }
     const curve = this.config.curveTokenAccount;
 
     // Fix the seed point as soon as a transaction lands after the seed target slot: nothing in
@@ -203,6 +221,7 @@ export class Ledger {
         const rules = parseRules(data.rules);
         if (rules.deadlineSlot !== this.deadlineSlot) fail('deadline differs from the commit memo');
         if (rules.strikeCount !== this.strikeCount || BigInt(rules.strikeSize) !== this.config.strikeSize) fail('strike size or count differs from the indexer');
+        if (JSON.stringify(rules.roll ?? null) !== JSON.stringify(this.config.roll ?? null)) fail('roll rules differ from the ones the indexer applied');
         if (data.seedTargetSlot !== this.seedFixedAt) fail(`seed target slot ${data.seedTargetSlot}, ledger says ${this.seedFixedAt}`);
         if (data.eligibleStrikes !== this.eligibleStrikes()) fail(`eligible strikes ${data.eligibleStrikes}, ledger says ${this.eligibleStrikes()}`);
         if (JSON.stringify(data.strikes) !== JSON.stringify(deriveTraits(rules, data.blockhash, data.eligibleStrikes))) fail('traits do not follow from the seed');
@@ -241,6 +260,11 @@ export class Ledger {
         this.takeOut(ev.from, ev.amount, 'burn');
         return;
 
+      case 'donate':
+        // Leaves the sender (melts) but never returns to the curve's saleable stock.
+        if (ev.from !== curve) this.takeOut(ev.from, ev.amount, 'transfer');
+        return;
+
       case 'ownerChange': {
         const h = this.holding(ev.account);
         this.meltAll(ev.account, h, 'ownerChange');
@@ -253,6 +277,8 @@ export class Ledger {
         const src = this.holding(ev.from);
         let ranges: Range[] = [];
         let valid = false;
+        // Declared ranges entirely past the saleable supply: a deliberate seal of ordinary $PROOF.
+        const ordinary = ev.ranges.length > 0 && ev.ranges.every((r) => r.start >= this.config.saleableSupply);
         try {
           ranges = R.normalize(ev.ranges);
           valid = R.total(ranges) === ev.amount && ranges.every((r) => R.contains(src.ranges, r));
@@ -271,11 +297,34 @@ export class Ledger {
         this.touched.add(ev.vault);
         this.vaultToEnvelope.set(ev.vault, ev.envelope);
         this.envelopes.set(ev.envelope, {
-          address: ev.envelope, vault: ev.vault, holder: ev.holder, status: 'sealed', price: 0n, sealedSlot: slot,
+          address: ev.envelope, vault: ev.vault, holder: ev.holder, status: 'sealed', price: 0n, sealedSlot: slot, roll: null, rolling: null,
         });
-        this.changes.push({ kind: 'seal', from: ev.from, envelope: ev.envelope, ranges: vault.ranges, valid });
+        this.changes.push({ kind: 'seal', from: ev.from, envelope: ev.envelope, ranges: vault.ranges, valid, ...(ordinary && !valid ? { ordinary: ev.amount } : {}) });
         return;
       }
+
+      case 'roll': {
+        // One roll per transaction; the first roll memo counts. Invalid rolls are recorded but do
+        // nothing (the fee is not refunded; the website checks everything before sending).
+        const rules = this.config.roll;
+        const env = this.envelopes.get(ev.envelope);
+        if (!rules || !env || this.rolledInTx) return;
+        this.rolledInTx = true;
+        const reject = (reason: string) => void this.changes.push({ kind: 'roll', envelope: env.address, holder: env.holder, valid: false, reason });
+        const vault = this.holdings.get(env.vault);
+        if (env.status !== 'sealed') return reject('envelope is listed');
+        if (env.rolling) return reject('a roll is already in progress');
+        if (env.roll && env.roll.points > 0) return reject('envelope already holds a rare roll');
+        if (!vault || vault.ranges.length) return reject('envelope holds rare Strikes');
+        if (vault.melted < BigInt(rules.minEntry)) return reject('envelope holds less than the minimum');
+        if ((this.rollFees.get(env.holder) ?? 0n) < BigInt(rules.feeLamports)) return reject('fee not paid by the holder');
+        env.rolling = { signature: this.currentSignature, slot, seedSlot: slot + rules.seedDelaySlots };
+        this.changes.push({ kind: 'roll', envelope: env.address, holder: env.holder, valid: true });
+        return;
+      }
+
+      case 'lamports':
+        return; // summed up front (rollFees)
 
       case 'list': {
         const env = this.envelope(ev.envelope);
@@ -323,6 +372,29 @@ export class Ledger {
         return;
       }
     }
+  }
+
+  // Rolls whose seed slot is at or before `slot`, i.e. whose seed block exists once `slot` is reached.
+  dueRolls(slot: number): Envelope[] {
+    return sortBy([...this.envelopes.values()].filter((e) => e.rolling && e.rolling.seedSlot <= slot), (e) => e.address);
+  }
+
+  // Settles a pending roll with its seed block: the first block at or after its seed slot. Applied
+  // before any transaction at or after that slot, so every indexer settles at the same point.
+  settleRoll(envelope: string, blockSlot: number, blockhash: string): TxChanges {
+    const env = this.envelope(envelope);
+    const rules = this.config.roll;
+    if (!env.rolling || !rules) throw new LedgerError(`no roll pending for ${envelope}`);
+    if (blockSlot < env.rolling.seedSlot) throw new LedgerError(`seed block ${blockSlot} before seed slot ${env.rolling.seedSlot}`);
+    const { signature } = env.rolling;
+    const result = rollResult(rules, signature, blockhash);
+    env.roll = { ...result, signature };
+    env.rolling = null;
+    return {
+      slot: blockSlot,
+      signature,
+      changes: [{ kind: 'rolled', envelope, holder: env.holder, name: result.name, points: result.points, seedSlot: blockSlot, blockhash }],
+    };
   }
 
   // Which rare ranges would leave `account` if it sent `amount` now (SPEC §6 outflow order).
@@ -457,7 +529,10 @@ export class Ledger {
         melted: h.melted.toString(),
         ranges: h.ranges.map((r) => [r.start.toString(), r.end.toString()]),
       })),
-      envelopes: sortBy([...this.envelopes.values()], (e) => e.address).map((e) => ({ ...e, price: e.price.toString() })),
+      envelopes: sortBy([...this.envelopes.values()], (e) => e.address).map((e) => ({
+        address: e.address, vault: e.vault, holder: e.holder, status: e.status, price: e.price.toString(), sealedSlot: e.sealedSlot,
+        roll: e.roll, rolling: e.rolling,
+      })),
     };
   }
 
@@ -483,7 +558,7 @@ export class Ledger {
       });
     }
     for (const e of json.envelopes) {
-      l.envelopes.set(e.address, { ...e, price: BigInt(e.price) });
+      l.envelopes.set(e.address, { roll: null, rolling: null, ...e, price: BigInt(e.price) });
       l.vaultToEnvelope.set(e.vault, e.address);
     }
     return l;

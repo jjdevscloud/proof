@@ -13,5 +13,67 @@
   "defaultDate": { "name": "Common Date", "points": 0 },
   "errors": [
     { "name": "Die Crack", "count": 6, "points": 1 }
-  ]
+  ],
+  "roll": {
+    "minEntry": "50000000000",
+    "feeLamports": "10000000",
+    "treasury": "hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb",
+    "seedDelaySlots": 2,
+    "tiers": [
+      {
+        "name": "Hoard",
+        "points": 100,
+        "odds": 500
+      },
+      {
+        "name": "Pattern",
+        "points": 85,
+        "odds": 1000
+      },
+      {
+        "name": "Die Trial",
+        "points": 70,
+        "odds": 2000
+      },
+      {
+        "name": "Overstrike",
+        "points": 55,
+        "odds": 4000
+      },
+      {
+        "name": "Restrike",
+        "points": 45,
+        "odds": 6000
+      },
+      {
+        "name": "Second Strike",
+        "points": 30,
+        "odds": 10000
+      },
+      {
+        "name": "Recoinage",
+        "points": 25,
+        "odds": 15000
+      },
+      {
+        "name": "Reissue",
+        "points": 20,
+        "odds": 20000
+      },
+      {
+        "name": "Mint Run",
+        "points": 15,
+        "odds": 30000
+      },
+      {
+        "name": "Assay",
+        "points": 10,
+        "odds": 40000
+      }
+    ],
+    "fallback": {
+      "name": "Coal",
+      "points": 0
+    }
+  }
 }

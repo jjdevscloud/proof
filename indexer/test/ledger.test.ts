@@ -289,3 +289,44 @@ test('same transactions give the same fingerprint', () => {
   assert.equal(run(), run());
   assert.equal(ledgerBalance(newLedger(), 'none'), 0n);
 });
+
+test('a reveal whose roll rules differ from the ones the indexer applied halts the ledger', () => {
+  const roll = { minEntry: '50000000000', feeLamports: '10000000', treasury: 'hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb', seedDelaySlots: 2,
+    tiers: [{ name: 'Hoard', points: 100, odds: 500 }], fallback: { name: 'Coal', points: 0 } };
+  const run = (committed: object, applied: object | undefined) => {
+    const c = new Chain(new Ledger({ ...newLedger().config, roll: applied as any }));
+    const text = rulesText(committed);
+    c.tx([{ kind: 'commit', root: rootOf(text), deadlineSlot: 5 }]);
+    c.tx([{ kind: 'curveBuy', to: 'A', amount: STRIKE }]);
+    c.slot = 6;
+    c.ledger.registerReveal(revealFile(text, 1), H);
+    c.tx([{ kind: 'reveal', fileHash: H }]);
+    return c.ledger.reveal !== null;
+  };
+  assert.equal(run({ roll }, roll), true);
+  assert.throws(() => run({ roll: { ...roll, feeLamports: '1' } }, roll), /roll rules differ/);
+  assert.throws(() => run({}, roll), /roll rules differ/);
+});
+
+test('a donation into the curve melts on the sender but is never resold as positions', () => {
+  const c = new Chain();
+  c.tx([{ kind: 'curveBuy', to: 'A', amount: 100n }]);
+  const ch = c.tx([{ kind: 'donate', from: 'A', amount: 30n }]);
+  assert.deepEqual(ch.changes, [{ kind: 'melt', account: 'A', ranges: [r(70n, 100n)], reason: 'transfer' }]);
+  assert.equal(c.ledger.curve.returned, 0n);
+  // The next buyer gets fresh positions straight away: the donated tokens are not in the curve's stock.
+  c.tx([{ kind: 'curveBuy', to: 'B', amount: 10n }]);
+  assert.deepEqual(c.ledger.holdings.get('B')!.ranges, [r(100n, 110n)]);
+});
+
+test('the curve still completes (and the seed point follows) after a donation', () => {
+  const c = new Chain();
+  const S = 793_100_000n * T;
+  c.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 1_000_000 }]);
+  c.tx([{ kind: 'curveBuy', to: 'A', amount: 1000n }]);
+  c.tx([{ kind: 'donate', from: 'A', amount: 1000n }]);
+  c.tx([{ kind: 'curveBuy', to: 'B', amount: S - 1000n }]);
+  assert.equal(c.ledger.curve.cursor, S);
+  assert.notEqual(c.ledger.completionSlot, null);
+  assert.equal(c.ledger.seedTarget(), c.ledger.completionSlot! + SEED_DELAY_SLOTS);
+});

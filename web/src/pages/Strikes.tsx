@@ -10,6 +10,7 @@ import { BitmapCurve, GradientView } from '../components/StrikesLab.tsx';
 import { TraitIcon, shareText, traitShare } from '../components/TraitIcons.tsx';
 import { FilterMenu } from '../components/FilterMenu.tsx';
 import { SurvivalTable } from '../components/SurvivalTable.tsx';
+import { RollStats } from '../components/Roll.tsx';
 
 type Filter = 'all' | 'rare' | 'surviving';
 type Status = 'surviving' | 'melted' | 'unissued';
@@ -229,6 +230,8 @@ export function Strikes() {
           </nav>
         )}
       </section>
+
+      <RollStats />
 
       <section className="panel">
         <h2>Survival by rarity</h2>

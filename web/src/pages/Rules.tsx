@@ -3,6 +3,8 @@ import { Addr } from '../components/ui.tsx';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { StepNav } from '../components/StepNav.tsx';
 import { CoinStream } from '../components/CoinStream.tsx';
+import { OddsTable } from '../components/Roll.tsx';
+import { fmtTokens, sol } from '../format.ts';
 import type { ReactNode } from 'react';
 import { Modal } from '../components/ui.tsx';
 import { EnvelopeFlow, FloorWave, MeltCurve, StrikeRuler, TwoPlaces } from '../components/graphics.tsx';
@@ -29,7 +31,7 @@ export function Rules() {
     return () => io.disconnect();
   }, []);
   return (
-    <WorkNav.Provider value={{ open, setOpen, total: 5 }}>
+    <WorkNav.Provider value={{ open, setOpen, total: config.roll ? 6 : 5 }}>
     <article className="prose">
       {/* DRAFT title, awaiting Harriet's approval. */}
       <div className="caption rules-caption"><h1>How Sequent Theory numbers<br />every token.</h1></div>
@@ -90,6 +92,22 @@ export function Rules() {
         on collectors, and ordinary $PROOF can itself go up or down.
       </p>
       </Work>
+
+      {config.roll && (
+        <Work index={5} title="6. Roll an envelope" graphic={<OddsTable roll={config.roll} />}>
+        <p>
+          Ordinary $PROOF can roll for a rare tier. Seal at least {fmtTokens(config.roll.minEntry)} into an envelope from your
+          wallet page and click Roll ({sol(config.roll.feeLamports)} SOL to the Sequents treasury per roll). The result comes from
+          the first Solana block at least {config.roll.seedDelaySlots} slots after your roll lands, which nobody can know when you
+          click: sha256 of the roll's signature and that block's hash picks the tier, with the odds above and no limit on how many of
+          each can exist. Your browser computes the result itself in a second or two; the ledger records it once the block is final.
+        </p>
+        <p>
+          A rolled tier lives on the envelope: list it on the desk, gift it, or keep it. {config.roll.fallback.name} envelopes can roll
+          again. Withdrawing the tokens melts the tier, like any rarity.
+        </p>
+        </Work>
+      )}
       </div>
 
       {/* What you can check yourself, one thing per row. */}

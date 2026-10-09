@@ -172,3 +172,28 @@ test('failed transactions are skipped', () => {
   const t = tx({ keys: [{ pubkey: 'A' }], ixs: [transfer('A', 'B', 1n)], err: { InstructionError: [0, 'Custom'] } });
   assert.equal(decoder.decode(t), null);
 });
+
+test('roll memos from anyone, and system transfers to the roll treasury', () => {
+  const TREASURY = 'Treasury1111111111111111111111111111111111';
+  const ENV = 'Enve1ope111111111111111111111111111111111111';
+  const d = new Decoder({ ...decoder.config, rollTreasury: TREASURY });
+  const fee = (destination: string) => ({ program: 'system', programId: '11111111111111111111111111111111', parsed: { type: 'transfer', info: { source: 'alice', destination, lamports: 10000000 } } });
+  const memo = { program: 'spl-memo', programId: MEMO, parsed: `proof:v1:roll:${ENV}` };
+  const t = tx({ keys: [{ pubkey: 'alice', signer: true }], ixs: [fee(TREASURY), fee('elsewhere'), memo, { ...memo, parsed: 'proof:v1:roll:not-an-address!' }] });
+  assert.deepEqual(d.decode(t)!.events, [
+    { kind: 'lamports', from: 'alice', to: TREASURY, lamports: 10000000n },
+    { kind: 'roll', envelope: ENV },
+  ]);
+  assert.deepEqual(decoder.decode(t)!.events, [{ kind: 'roll', envelope: ENV }], 'no treasury configured: no fee events');
+});
+
+test('into the curve: a sell under pump.fun is a sell-back, a plain transfer is a donation', () => {
+  const sell = { program: 'unknown', programId: PUMP, data: ixData('sell'), accounts: [] };
+  const viaPump = tx({ keys: [{ pubkey: 'A', signer: true }, { pubkey: CURVE }], ixs: [sell],
+    inner: [{ index: 0, instructions: [transfer('A', CURVE, 5n, 2)] }],
+    pre: [bal(0, 'alice', 5n), bal(1, 'curvePda', 100n)], post: [bal(0, 'alice', 0n), bal(1, 'curvePda', 105n)] });
+  assert.deepEqual(decoder.decode(viaPump)!.events, [{ kind: 'transfer', from: 'A', to: CURVE, amount: 5n }]);
+  const plain = tx({ keys: [{ pubkey: 'A', signer: true }, { pubkey: CURVE }], ixs: [transfer('A', CURVE, 5n)],
+    pre: [bal(0, 'alice', 5n), bal(1, 'curvePda', 100n)], post: [bal(0, 'alice', 0n), bal(1, 'curvePda', 105n)] });
+  assert.deepEqual(decoder.decode(plain)!.events, [{ kind: 'donate', from: 'A', amount: 5n }]);
+});
