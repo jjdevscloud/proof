@@ -16,6 +16,7 @@ import { Rolls } from './pages/Rolls.tsx';
 import { Prelaunch } from './pages/Prelaunch.tsx';
 import { DEMO } from './demo.ts';
 import { Logo } from './components/Logo.tsx';
+import { markConnect, takeConnect } from './components/revealOnConnect.ts';
 
 const ConfigContext = createContext<{ config: Config; vault: Vault } | null>(null);
 export function useConfig(): Config {
@@ -154,7 +155,7 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
           ) : (
             <button
               className="btn btn-primary"
-              onClick={() => wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => setErr(e.message))}
+              onClick={() => { markConnect(); wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => { takeConnect(); setErr(e.message); }); }}
             >
               Connect wallet
             </button>
@@ -165,7 +166,7 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
         {!pending && !wallet.address && !wallet.restoring && (
           <button
             className="btn btn-primary btn-cycle"
-            onClick={() => wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => setErr(e.message))}
+            onClick={() => { markConnect(); wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => { takeConnect(); setErr(e.message); }); }}
           >
             Connect wallet
           </button>

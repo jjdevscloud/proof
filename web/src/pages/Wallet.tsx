@@ -8,6 +8,7 @@ import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCardView, StrikeCoi
 import { Confetti, RollAgain, RollPanel } from '../components/Roll.tsx';
 import { EnvelopeDetails, EnvelopePic } from './Desk.tsx';
 import { VerifyBox } from '../components/Closer.tsx';
+import { markConnect, takeConnect } from '../components/revealOnConnect.ts';
 
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
   const wallet = useWallet();
@@ -29,13 +30,14 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
     };
   }, [vault, own, address, data]);
 
-  // The reveal: every time a wallet connects, its Strikes are revealed one by one (display only).
+  // The reveal: each time the user presses Connect wallet, their Strikes are revealed one by one (display only).
   const [reveal, setReveal] = useState<Segment[] | null>(null);
   const revealChecked = useRef<string | null>(null);
   useEffect(() => {
-    if (!address) { revealChecked.current = null; return; } // disconnected: the next connect reveals again
+    if (!address) { revealChecked.current = null; return; }
     if (!own || !data || revealChecked.current === address) return;
     revealChecked.current = address;
+    if (!takeConnect()) return; // only right after pressing Connect wallet
     // Only Strikes are revealed: they are what was bought off the curve. Envelopes are on the wallet page.
     const strikes = data.accounts.flatMap((a) => a.segments);
     if (strikes.length) setReveal(strikes);
@@ -58,7 +60,7 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
             {/* DRAFT heading and lines, awaiting Harriet's approval. */}
             <h2>Connect your wallet</h2>
             <p className="muted list-sub">See what you got: the rare tokens you bought on the curve and your envelopes. Then seal, list, gift or roll.</p>
-            <button className="btn btn-primary btn-cycle" onClick={() => wallet.connect().catch(() => {})} disabled={!wallet.available}>
+            <button className="btn btn-primary btn-cycle" onClick={() => { markConnect(); wallet.connect().catch(() => { takeConnect(); }); }} disabled={!wallet.available}>
               {wallet.available ? 'Connect wallet' : 'No wallet detected'}
             </button>
           </div>
