@@ -4,7 +4,7 @@
   "port": 8787,
   "pollMs": 2000,
   "maxWindowSlots": 20000,
-  "startSlot": 0,
+  "startSlot": 455023336,
   "fingerprintEverySlots": 9000,
   "mint": "PENDING",
   "curveTokenAccount": "PENDING",

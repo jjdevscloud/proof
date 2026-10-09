@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "project": "Sequents",
+  "token": "$PROOF",
+  "strikeSize": "1000000000000",
+  "strikeCount": 794,
+  "deadlineSlot": 456535337,
+  "dates": [
+    { "name": "Genesis", "from": 0, "to": 4, "points": 40 },
+    { "name": "Key Date", "from": 5, "to": 24, "points": 15 },
+    { "name": "Final Strike", "from": 793, "to": 793, "points": 10 }
+  ],
+  "defaultDate": { "name": "Common Date", "points": 0 },
+  "errors": [
+    { "name": "Double Die", "count": 3, "points": 100 },
+    { "name": "Wrong Planchet", "count": 6, "points": 70 },
+    { "name": "Off-Center", "count": 12, "points": 50 },
+    { "name": "Clipped Planchet", "count": 24, "points": 30 },
+    { "name": "Die Crack", "count": 48, "points": 15 }
+  ],
+  "roll": {
+    "minEntry": "50000000000",
+    "feeLamports": "10000000",
+    "treasury": "hWZ3MZHKNvjP69DRSwX8WQqaPYa4tNdJVvTjNn5ixWb",
+    "seedDelaySlots": 2,
+    "tiers": [
+      { "name": "Hoard", "points": 100, "odds": 500 },
+      { "name": "Pattern", "points": 85, "odds": 1000 },
+      { "name": "Die Trial", "points": 70, "odds": 2000 },
+      { "name": "Overstrike", "points": 55, "odds": 4000 },
+      { "name": "Restrike", "points": 45, "odds": 6000 },
+      { "name": "Second Strike", "points": 30, "odds": 10000 },
+      { "name": "Recoinage", "points": 25, "odds": 15000 },
+      { "name": "Reissue", "points": 20, "odds": 20000 },
+      { "name": "Mint Run", "points": 15, "odds": 30000 },
+      { "name": "Assay", "points": 10, "odds": 40000 }
+    ],
+    "fallback": { "name": "Coal", "points": 0 }
+  }
+}
