@@ -12,6 +12,7 @@ import { ErrorNote, Loading, Modal, runTx } from './ui.tsx';
 import { coinCells } from './pixels.tsx';
 import { PixelIcon, rollIconName, shareText } from './TraitIcons.tsx';
 import { FilterMenu } from './FilterMenu.tsx';
+import { PixelTick } from './PixelTick.tsx';
 
 const COIN = coinCells(7, 5, 0);
 
@@ -142,7 +143,10 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
   const [amount, setAmount] = useState('');
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [revealing, setRevealing] = useState<string | null>(null);
+  // The roll as one pop-up, step by step: choose the amount, seal and pay, confirmed, the block decides, the result.
+  const [phase, setPhase] = useState<'amount' | 'sign' | 'block' | 'done'>('amount');
+  const [result, setResult] = useState<{ name: string; points: number } | null>(null);
+  const closeFlow = () => { setOpen(false); setErr(null); setPhase('amount'); setResult(null); };
 
   useEffect(() => {
     if (!roll) return;
@@ -196,19 +200,44 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
     </section>
 
       {open && (
-        <Modal title="Seal & roll" onClose={() => { setOpen(false); setErr(null); }}>
-          <label className="field">
-            Ordinary $PROOF to seal
-            <input value={amount} onChange={(x) => setAmount(x.target.value)} inputMode="decimal" autoFocus />
-          </label>
-          <p className="small muted">
-            Minimum {fmtTokens(min)}, up to {fmtTokens(ordinary)}. One transaction: creates the envelope (about 0.004 SOL rent, returned
-            when it is opened) and pays the {sol(roll.feeLamports)} SOL roll fee.
-          </p>
-          {err && <ErrorNote error={err} />}
-          <button
-            className="btn btn-primary wide"
-            onClick={async () => {
+        <div className="modal-backdrop reveal-backdrop">
+          <div className="modal reveal reveal-framed reveal-single roll-flow" role="dialog" aria-modal="true" aria-label="Seal and roll">
+            <div className="reveal-body">
+              {/* DRAFT wording, awaiting Harriet's approval. */}
+              <div className="reveal-head">
+                <div>
+                  <h2>{phase === 'amount' ? 'Seal & roll' : phase === 'sign' ? 'Waiting for your wallet' : phase === 'block' ? 'Rolling' : 'Your roll'}</h2>
+                  <p className="muted list-sub">{phase === 'done' ? 'The block has decided.' : 'Every step happens here.'}</p>
+                </div>
+                {(phase === 'amount' || phase === 'done') && <button className="icon-btn" onClick={closeFlow} aria-label="Close">×</button>}
+              </div>
+              <ol className="roll-steps">
+                {['Seal and pay', 'Confirmed on Solana', 'The next block decides', 'Your tier'].map((label, n) => {
+                  const at = phase === 'amount' ? -1 : phase === 'sign' ? 0 : phase === 'block' ? 2 : 4;
+                  const state = n < at ? 'done' : n === at ? 'now' : 'wait';
+                  return (
+                    <li key={label} className={`roll-step ${state}`}>
+                      <span className="roll-step-mark">{state === 'done' ? <PixelTick /> : state === 'now' ? <BrandLoader /> : n + 1}</span>
+                      {label}
+                    </li>
+                  );
+                })}
+              </ol>
+
+              {phase === 'amount' && (
+                <>
+                  <label className="field">
+                    Ordinary $PROOF to seal
+                    <input value={amount} onChange={(x) => setAmount(x.target.value)} inputMode="decimal" autoFocus />
+                  </label>
+                  <p className="small muted">
+                    Minimum {fmtTokens(min)}, up to {fmtTokens(ordinary)}. One transaction creates the envelope (about 0.004 SOL rent,
+                    returned when it is opened) and pays the {sol(roll.feeLamports)} SOL roll fee.
+                  </p>
+                  {err && <ErrorNote error={err} />}
+                  <button
+                    className="btn btn-primary wide"
+                    onClick={async () => {
               setErr(null);
               if (chosen < min) return setErr(`Seal at least ${fmtTokens(min)}.`);
               if (chosen > ordinary) return setErr(`You have ${fmtTokens(ordinary)} ordinary $PROOF in your main account.`);
@@ -225,18 +254,69 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
               } catch (x) {
                 return setErr(`Could not check your account: ${(x as Error).message}`);
               }
-              const sig = await runTx('Seal & roll', () => vault.sealAndRoll(owner, main!.account, chosen));
-              if (sig) {
-                setOpen(false);
-                setRevealing(sig);
+              // One pop-up for the whole roll, no corner notifications. The same transaction as before.
+              setPhase('sign');
+              let sig: string;
+              try {
+                sig = await vault.sealAndRoll(owner, main!.account, chosen);
+              } catch (x) {
+                setPhase('amount');
+                return setErr((x as Error).message ?? String(x));
               }
-            }}
-          >
-            Seal {fmtTokens(chosen)} & roll · {sol(roll.feeLamports)} SOL
-          </button>
-        </Modal>
+              setPhase('block');
+              try {
+                setResult(await vault.rollOutcome(sig));
+                setPhase('done');
+              } catch (x) {
+                setErr((x as Error).message ?? String(x));
+              }
+                    }}
+                  >
+                    Seal {fmtTokens(chosen)} & roll · {sol(roll.feeLamports)} SOL
+                  </button>
+                </>
+              )}
+
+              {(phase === 'sign' || phase === 'block') && (
+                <div className="reveal-grid">
+                  <div className="reveal-card in waiting">
+                    <div className="reveal-square strike-mini roll-square">
+                      <RollCoin points={null} spinning />
+                      <BrandLoader />
+                      <span className="small muted">{phase === 'sign' ? 'Approve it in your wallet' : 'Striking'}</span>
+                    </div>
+                  </div>
+                  {err && <ErrorNote error={err} />}
+                </div>
+              )}
+
+              {phase === 'done' && result && (
+                <>
+                  <div className="reveal-grid">
+                    <div className="reveal-card in landed">
+                      <div className={`reveal-square strike-mini roll-square t${tier(result.points)}`}>
+                        <RollCoin points={result.points} name={result.name} />
+                        <strong className="strike-title">{result.name}</strong>
+                        <span className="rarity-tag"><i className={`tier-dot t${tier(result.points)}`} />{TIER_NAMES[tier(result.points)]}</span>
+                        <span className="small muted">{result.points} points</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="reveal-note">
+                    {result.points > 0
+                      ? 'Your envelope now carries this rare tier. List it on the desk, gift it, or keep it. Withdrawing the tokens melts it back to ordinary.'
+                      : 'Ordinary this time. You can roll the same envelope again from your wallet.'}{' '}
+                    The ledger records it once the block is final, in about 20 seconds.
+                  </p>
+                  <div className="reveal-foot">
+                    <button className="btn btn-primary" onClick={closeFlow}>Done</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
-      {revealing && <RollReveal signature={revealing} onClose={() => setRevealing(null)} />}
     </>
   );
 }
@@ -612,4 +692,9 @@ export function RollCurve({ roll, data, width, onTip }: {
       )}
     </svg>
   );
+}
+
+// A loader in the four rarity colours: green, blue, purple, black, stepping one after another.
+export function BrandLoader() {
+  return <span className="brand-loader" aria-hidden><i className="t0" /><i className="t1" /><i className="t2" /><i className="t3" /></span>;
 }

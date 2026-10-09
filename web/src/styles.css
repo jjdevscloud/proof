@@ -1501,3 +1501,35 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 .reveal-framed .reveal-foot { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--soft); padding-top: 18px; }
 .reveal-framed .reveal-note { background: none; padding: 0; }
 @media (prefers-reduced-motion: reduce) { .modal.reveal-framed::before { animation: none; } }
+
+/* The roll as one pop-up: four numbered steps, a tick when done, the four colour loader on the current one. */
+.roll-flow .reveal-head { align-items: flex-start; }
+.roll-steps { list-style: none; margin: 0; display: grid; gap: 8px; border-top: 1px solid var(--soft); border-bottom: 1px solid var(--soft); padding: 14px 0; }
+.roll-step { display: flex; align-items: center; gap: 12px; color: var(--muted); }
+.roll-step.now, .roll-step.done { color: var(--ink); }
+.roll-step-mark { width: 30px; height: 16px; display: inline-flex; align-items: center; }
+.roll-flow .reveal-grid { justify-items: center; grid-template-columns: 1fr; }
+.roll-flow .reveal-card { width: 240px; }
+.roll-square { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.brand-loader { display: inline-flex; gap: 3px; }
+.brand-loader i { width: 6px; height: 6px; background: var(--tier); animation: brand-loader 1s infinite ease-in-out; }
+.brand-loader i:nth-child(2) { animation-delay: 0.15s; } .brand-loader i:nth-child(3) { animation-delay: 0.3s; } .brand-loader i:nth-child(4) { animation-delay: 0.45s; }
+@keyframes brand-loader { 0%, 100% { transform: translateY(0); opacity: 0.35; } 40% { transform: translateY(-4px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .brand-loader i { animation: none; opacity: 1; } }
+/* The X button in the header: a small black square with just the letter X, linking to the Sequents X account. */
+.x-btn { display: inline-grid; place-items: center; width: 34px; height: 34px; background: #000; color: #fff; font-weight: 700; text-transform: none; }
+.x-btn:hover { background: var(--purple); color: #fff; }
+
+/* Traits, Rarity: four square cards in a row, like the cards on Strikes and My wallet. */
+.rarity-cards { grid-template-columns: repeat(4, 1fr); }
+.rarity-cards li { aspect-ratio: 1 / 1; min-height: 0; }
+.band-coin { display: block; width: 72px; height: 72px; }
+.band-coin .pi { width: 100%; height: 100%; display: block; }
+.band-coin .pi-t { fill: var(--tier); }
+@media (max-width: 720px) { .rarity-cards { grid-template-columns: 1fr 1fr; } }
+.x-btn { font-weight: 400; }
+.rarity-cards li { aspect-ratio: auto; min-height: 170px; }
+/* Keep the whole roll pop-up on screen: a smaller result card and tighter gaps. */
+.roll-flow .reveal-body { gap: 16px; padding: 24px; }
+.roll-flow .reveal-card { width: 200px; }
+.roll-flow .roll-square .roll-coin { --size: 72px; }

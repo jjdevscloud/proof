@@ -142,6 +142,8 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
           ))}
         </nav>
         <div className="header-right">
+        {/* The Sequents account on X: a small square with just the letter X. */}
+        <a className="x-btn" href="https://x.com/sequent_theory" target="_blank" rel="noreferrer" aria-label="Sequents on X">X</a>
         <div className="wallet-btn">
           {pending ? (
             <span className="pill">Launching soon</span>

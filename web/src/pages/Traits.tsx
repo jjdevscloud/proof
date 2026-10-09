@@ -49,16 +49,21 @@ export function Traits() {
           {/* DRAFT line, awaiting Harriet's approval. */}
           <p className="muted list-sub">Points set the rarity. A Strike adds up its date and error points, and a roll takes the points of its tier.</p>
         </div>
-        <div className="bands">
+        {/* Four square cards in a row, like the cards on Strikes and My wallet: picture top left, share top right. */}
+        <ul className="strike-feature rarity-cards">
           {BANDS.map(([t, pts]) => (
-            <div key={t} className={`band t${t}`}>
-              <PixelIcon name="common" unit={2} tight />
-              <strong>{TIER_NAMES[t]}</strong>
-              {tierShare(t) && <span className="band-share">{tierShare(t)}</span>}
-              <span className="muted">{pts}</span>
-            </div>
+            <li key={t} className={`t${t}`}>
+              <header className="post-head strike-card-head">
+                <span className="band-coin"><PixelIcon name="common" tight /></span>
+                <span className="post-who">
+                  <strong className="strike-title">{TIER_NAMES[t]}</strong>
+                  <span className="small muted">{pts}</span>
+                </span>
+                {tierShare(t) && <span className="rarity-tag">{tierShare(t)} of Strikes</span>}
+              </header>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
 
       {/* The two sets of traits as tabs on one panel, like the views on the Strikes page. */}
