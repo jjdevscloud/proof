@@ -1423,3 +1423,23 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 /* A Strike sealed inside an envelope: its picture smaller than the envelope picture above it, so it reads as inside the casing. */
 .strike-mini .coin { --size: 26px; }
 .strike-mini { background: var(--bg); }
+
+/* ---- The wallet reveal: a wide pop-up, cards turning over one by one, the rarest last in the moving frame ---- */
+.wallet-connect-frame { margin-top: 8px; }
+.wallet-connect { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.wallet-lookup-line { margin: 8px 0 0; }
+.modal.reveal { width: min(980px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 64px); overflow: auto; display: grid; gap: 20px; }
+.reveal-head { display: flex; justify-content: space-between; align-items: baseline; }
+.reveal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; perspective: 900px; }
+.reveal-card { opacity: 0; transform: rotateY(90deg) scale(0.96); transition: opacity 0.35s ease, transform 0.55s cubic-bezier(.2,.8,.2,1); }
+.reveal-card.in { opacity: 1; transform: none; }
+.reveal-card .feature-frame { margin: 0; }
+.reveal-inner { padding: 0; }
+.reveal-foot { display: flex; justify-content: flex-end; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .reveal-card { opacity: 1; transform: none; transition: none; } }
+
+/* My wallet, not connected: the Overview's Verify holdings box under Connect wallet, the same full width. */
+.wallet-verify { margin-top: 24px; }
+.wallet-verify .closer-box { width: 100%; }
+.wallet-verify .closer-box { justify-items: start; text-align: left; padding: 40px 40px 36px; }
+.wallet-verify .closer-box .verify-check { display: none; }

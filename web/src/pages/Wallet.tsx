@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, useApi } from '../api.ts';
 import type { Envelope, Preview, Segment, WalletView } from '../api.ts';
 import { useConfig, useVault } from '../App.tsx';
@@ -7,11 +7,11 @@ import { BASE, CLUSTER, TIER_NAMES, feeOf, feePct, fmtTokens, lamportsFromSol, s
 import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCardView, StrikeCoin, Traits, TypedConfirm, runTx } from '../components/ui.tsx';
 import { RollAgain, RollPanel } from '../components/Roll.tsx';
 import { EnvelopeDetails, EnvelopePic } from './Desk.tsx';
+import { VerifyBox } from '../components/Closer.tsx';
 
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
   const wallet = useWallet();
   const address = routeAddress ?? wallet.address;
-  const [input, setInput] = useState('');
   const [tab, setTab] = useState<'rare' | 'envelopes' | 'roll'>('rare');
   const valid = !!address && isAddress(address);
   const { data, error } = useApi<WalletView>(valid ? `/wallet/${address}` : null);
@@ -29,6 +29,23 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
     };
   }, [vault, own, address, data]);
 
+  // The reveal: the first time a wallet connects, everything it holds is revealed one by one. After that,
+  // only what is new since the last visit. What has been seen is kept in this browser only (display only).
+  const [reveal, setReveal] = useState<{ strikes: Segment[]; envelopes: Envelope[]; first: boolean } | null>(null);
+  const revealChecked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!own || !address || !data || revealChecked.current === address) return;
+    revealChecked.current = address;
+    const key = `sequents-seen:${address}`;
+    let seen: string[] | null = null;
+    try { seen = JSON.parse(localStorage.getItem(key) ?? 'null'); } catch { seen = null; }
+    const strikes = data.accounts.flatMap((a) => a.segments);
+    const newStrikes = seen ? strikes.filter((x) => !seen!.includes(`s${x.start}`)) : strikes;
+    const newEnvelopes = seen ? data.envelopes.filter((x) => !seen!.includes(`e${x.address}`)) : data.envelopes;
+    try { localStorage.setItem(key, JSON.stringify([...strikes.map((x) => `s${x.start}`), ...data.envelopes.map((x) => `e${x.address}`)])); } catch { /* private mode: no memory, no harm */ }
+    if (newStrikes.length || newEnvelopes.length) setReveal({ strikes: newStrikes, envelopes: newEnvelopes, first: !seen });
+  }, [own, address, data]);
+
   if (!address && wallet.restoring) return <Loading what="Reconnecting your wallet" />;
   if (!address) {
     return (
@@ -37,22 +54,22 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
           <div>
             <h1>My wallet</h1>
             {/* DRAFT line, awaiting Harriet's approval. */}
-            <p className="muted page-sub">Connect your wallet to see and manage your rare $PROOF, or look up any wallet.</p>
+            <p className="muted page-sub">Connect your wallet to see and manage your rare $PROOF.</p>
           </div>
         </div>
-        <section className="strike-search top-search">
-          <form className="search-row" onSubmit={(e) => { e.preventDefault(); if (isAddress(input.trim())) location.hash = `#/wallet/${input.trim()}`; }}>
-            <input placeholder="Paste a wallet address" value={input} onChange={(e) => setInput(e.target.value)} aria-label="Wallet address" />
-            <button className="btn btn-primary">Look up</button>
-          </form>
+        {/* Connecting is the one action here. Looking up someone else's wallet lives in Verify holdings on the Overview. */}
+        <section className="feature-frame wallet-connect-frame">
+          <div className="feature-inner wallet-connect">
+            {/* DRAFT heading and lines, awaiting Harriet's approval. */}
+            <h2>Connect your wallet</h2>
+            <p className="muted list-sub">See what you got: the rare tokens you bought on the curve and your envelopes. Then seal, list, gift or roll.</p>
+            <button className="btn btn-primary btn-cycle" onClick={() => wallet.connect().catch(() => {})} disabled={!wallet.available}>
+              {wallet.available ? 'Connect wallet' : 'No wallet detected'}
+            </button>
+          </div>
         </section>
-        <section className="panel wallet-connect">
-          <h2>Connect your wallet</h2>
-          <p className="muted list-sub">See the rare tokens you bought on the curve, seal them, list them on the desk, or roll ordinary $PROOF.</p>
-          <button className="btn btn-primary btn-cycle" onClick={() => wallet.connect().catch(() => {})} disabled={!wallet.available}>
-            {wallet.available ? 'Connect wallet' : 'No wallet detected'}
-          </button>
-        </section>
+        {/* Looking at someone else's wallet: the same Verify holdings box as on the Overview, full width. */}
+        <div className="wallet-verify"><VerifyBox /></div>
       </>
     );
   }
@@ -65,11 +82,12 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
   const rareTokens = (data?.accounts ?? []).reduce((n, a) => n + a.segments.reduce((t, x) => t + BigInt(x.end) - BigInt(x.start), 0n), 0n);
   return (
     <>
+      {reveal && <Reveal {...reveal} onDone={() => setReveal(null)} />}
       <div className="page-head">
         <div>
           <h1>{own ? 'My wallet' : 'Wallet'}</h1>
           {/* DRAFT line, awaiting Harriet's approval. */}
-          <p className="muted page-sub"><Addr value={address} />{own ? ' is currently connected.' : '.'} Rare tokens from the curve and sealed envelopes.</p>
+          <p className="muted page-sub"><Addr value={address} />{own ? ' is currently connected.' : ', viewing only, not connected.'} Rare tokens from the curve and sealed envelopes.</p>
         </div>
         {data && (
           <div className="roll-stat-box">
@@ -429,5 +447,49 @@ function EnvelopeHead({ e }: { e: Envelope }) {
       </span>
       {e.status === 'listed' && <span className="price">{sol(e.price)} <small>SOL</small></span>}
     </header>
+  );
+}
+
+// The reveal pop-up: what the wallet holds (or what is new), least rare first, each card turning over a moment
+// apart, the rarest last in the colour cycling frame. Skip shows everything at once. Display only.
+function Reveal({ strikes, envelopes, first, onDone }: { strikes: Segment[]; envelopes: Envelope[]; first: boolean; onDone: () => void }) {
+  const envRank = (e: Envelope) => Math.max(e.segments.reduce((m, x) => Math.max(m, x.rank), 0), e.roll?.points ?? 0);
+  const items = [
+    ...strikes.map((x) => ({ key: `s${x.start}`, rank: x.rank, node: <StrikeCardView strike={x.strike} rank={x.rank} traits={x.traits} part={BigInt(x.end) - BigInt(x.start)} whole={1_000_000_000_000n} sub={`${fmtTokens(BigInt(x.end) - BigInt(x.start))} tokens`} /> })),
+    ...envelopes.map((e) => ({ key: `e${e.address}`, rank: envRank(e), node: <EnvelopeHead e={e} /> })),
+  ].sort((a, b) => a.rank - b.rank);
+  const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const [shown, setShown] = useState(still ? items.length : 0);
+  useEffect(() => {
+    if (shown >= items.length) return;
+    const t = setTimeout(() => setShown((n) => n + 1), shown === 0 ? 500 : 750);
+    return () => clearTimeout(t);
+  }, [shown, items.length]);
+  const done = shown >= items.length;
+  return (
+    <div className="modal-backdrop reveal-backdrop">
+      <div className="modal reveal" role="dialog" aria-modal="true" aria-label="Your reveal">
+        {/* DRAFT wording, awaiting Harriet's approval. */}
+        <div className="reveal-head">
+          <h2>{first ? 'Revealing your $PROOF' : 'New since your last visit'}</h2>
+          <span className="muted">{Math.min(shown, items.length)} of {items.length}</span>
+        </div>
+        <div className="reveal-grid">
+          {items.map((it, i) => {
+            const rarest = i === items.length - 1 && items.length > 1;
+            const card = <div className="strike-mini">{it.node}</div>;
+            return (
+              <div key={it.key} className={i < shown ? 'reveal-card in' : 'reveal-card'}>
+                {rarest ? <div className="feature-frame"><div className="feature-inner reveal-inner">{card}</div></div> : card}
+              </div>
+            );
+          })}
+        </div>
+        <div className="reveal-foot">
+          {!done && <button className="btn btn-ghost" onClick={() => setShown(items.length)}>Skip</button>}
+          <button className="btn btn-primary btn-cycle" disabled={!done} onClick={onDone}>See my wallet</button>
+        </div>
+      </div>
+    </div>
   );
 }
