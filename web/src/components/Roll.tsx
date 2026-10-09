@@ -697,10 +697,12 @@ export function BrandLoader() {
   return <span className="brand-loader" aria-hidden><i className="t0" /><i className="t1" /><i className="t2" /><i className="t3" /></span>;
 }
 
-// Pixel confetti in the four rarity colours, bursting from behind the result card. More for rarer results.
+// Pixel confetti in the four rarity colours, bursting from behind a card. None for Common, more the rarer it is.
 export function Confetti({ points }: { points: number }) {
   const t = tier(points);
-  const n = [14, 26, 40, 60][t];
+  // No confetti for Common. Uncommon, Rare and Legendary get more the rarer they are.
+  if (t === 0) return null;
+  const n = [0, 22, 40, 64][t];
   const pieces = Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2 + Math.random() * 0.6;
     const d = 140 + Math.random() * 160;

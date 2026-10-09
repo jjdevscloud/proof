@@ -494,8 +494,8 @@ function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean
             );
             return (
               <div key={x.start} className={`reveal-card${i < shown ? ' in' : ''}${rarest ? ' rarest' : ''}`}>
-                {/* When the rarest lands, the same pixel confetti as a roll bursts from behind it. */}
-                {rarest && i < shown && <Confetti points={x.rank} />}
+                {/* Each card bursts the same pixel confetti as a roll as it lands: none for Common, more the rarer. */}
+                {i < shown && <Confetti points={x.rank} />}
                 {rarest ? <div className="feature-frame">{card}</div> : card}
               </div>
             );
