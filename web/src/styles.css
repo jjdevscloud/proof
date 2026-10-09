@@ -846,6 +846,14 @@ input[type="checkbox"] {
   gap: 20px;
   padding: 28px;
   display: grid;
+  /* One column no wider than the card, so long rows wrap instead of spilling past the edge. */
+  grid-template-columns: minmax(0, 1fr);
+}
+.card .segments li {
+  gap: 12px;
+}
+.card .seg-amt {
+  flex: none;
 }
 .card-head,
 .card-foot {
@@ -2284,4 +2292,38 @@ textarea {
 }
 .coin-lg {
   --size: 154px;
+}
+/* Layout guards: grid and flex boxes may not grow past their container to fit their content,
+   so long rows (traits, amounts, trait icons) wrap or shrink instead of being clipped. */
+.segments,
+.seg-main,
+.profile {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.segments li {
+  flex-wrap: wrap;
+}
+.seg-main {
+  flex: 1 1 150px;
+}
+.profile-icons {
+  flex-wrap: wrap;
+}
+.strike-hero {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+@media (width<=900px) {
+  .strike-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .strike-hero-stat.profile {
+    min-width: 0;
+    width: 100%;
+  }
+}
+@media (width<=720px) {
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
