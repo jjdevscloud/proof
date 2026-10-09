@@ -104,9 +104,9 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
           <button className="icon-btn" onClick={onClose} aria-label="Close">×</button>
         </div>
         {result ? <RollResultCard result={result} /> : (
-          <div className="reveal-grid">
+          <div className="roll-result-wrap">
             <div className="reveal-card in waiting">
-              <div className="reveal-square strike-mini roll-square">
+              <div className="reveal-square strike-mini roll-square roll-result">
                 <Logo />
                 <BrandLoader />
                 <span className="small muted">{err ? '' : 'Rolling'}</span>
@@ -114,6 +114,7 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
             </div>
           </div>
         )}
+        {!result && !err && <p className="reveal-note roll-hold" aria-hidden>Your result appears here as soon as the block decides. The ledger records it once the block is final.</p>}
         {err && <ErrorNote error={err} />}
         {result && (
           <p className="reveal-note">
@@ -285,16 +286,21 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
               )}
 
               {(phase === 'sign' || phase === 'block' || (phase === 'done' && !landed)) && (
-                <div className="reveal-grid">
-                  <div className="reveal-card in waiting">
-                    <div className="reveal-square strike-mini roll-square">
-                      <Logo />
-                      <BrandLoader />
-                      <span className="small muted">{shownAt <= 0 ? 'Approve it in your wallet' : 'Rolling'}</span>
+                <>
+                  {/* Laid out exactly like the result below (same card size, a note and a button held in place),
+                      so the pop-up does not change size when the result lands. */}
+                  <div className="roll-result-wrap">
+                    <div className="reveal-card in waiting">
+                      <div className="reveal-square strike-mini roll-square roll-result">
+                        <Logo />
+                        <BrandLoader />
+                        <span className="small muted">{shownAt <= 0 ? 'Approve it in your wallet' : 'Rolling'}</span>
+                      </div>
                     </div>
                   </div>
-                  {err && <ErrorNote error={err} />}
-                </div>
+                  {err ? <ErrorNote error={err} /> : <p className="reveal-note roll-hold" aria-hidden>Your result appears here as soon as the block decides. The ledger records it once the block is final.</p>}
+                  <div className="reveal-foot roll-hold" aria-hidden><button className="btn btn-primary" tabIndex={-1}>Done</button></div>
+                </>
               )}
 
               {landed && result && (
@@ -704,7 +710,7 @@ export function Confetti({ points }: { points: number }) {
   // dramatic burst in every colour, thrown further and falling longer.
   if (t === 0) return null;
   const n = [0, 16, 28, 110][t];
-  const reach = [0, 110, 150, 340][t];
+  const reach = [0, 170, 220, 360][t];
   const pieces = Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2 + Math.random() * 0.6;
     const d = reach * (0.55 + Math.random() * 0.6);

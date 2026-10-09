@@ -61,7 +61,7 @@ export function HowItWorks() {
       <div className={pinned ? 'how-stage' : undefined}>
       {/* DRAFT heading and line, awaiting Harriet's approval. */}
       <h2>How it works</h2>
-      <p>From the bonding curve to the after the curve roll.</p>
+      <p>From buying on the curve to rolling after it.</p>
 
       {/* Two paths on one grid: bought on the curve runs Buy, Seal, List or sell; bought after the curve
           runs the same three and then Roll. Titles on top, the two lines in the middle, the words below. */}

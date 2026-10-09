@@ -1572,3 +1572,16 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 .reveal-card { position: relative; }
 .reveal-card > .strike-mini, .reveal-card > .feature-frame { position: relative; z-index: 1; }
 .confetti i { animation-duration: var(--dur, 1.6s); }
+
+/* Confetti flies over the cards, not behind them, so even the small bursts are seen. It never blocks clicks. */
+.confetti { z-index: 3; pointer-events: none; }
+.reveal-card > .strike-mini, .reveal-card > .feature-frame, .roll-result-wrap .reveal-card { z-index: 1; }
+.reveal-framed .reveal-grid, .roll-result-wrap { overflow: visible; }
+
+/* Traits rarity cards: the coin at the same size as the Strike pictures on the Strikes page. */
+.band-coin { width: 40px; height: 40px; }
+
+/* While rolling, the note and button are held in place but hidden, so the pop-up stays one size. */
+.roll-hold { visibility: hidden; }
+.roll-flow .reveal-card, .roll-result-wrap .reveal-card { width: 240px; }
+.roll-result { min-height: 240px; }
