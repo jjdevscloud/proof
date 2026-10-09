@@ -102,7 +102,7 @@ function OriginAccount({ owner, account, common, segments, own }: { owner: strin
             {own && (
               <input type="checkbox" checked={selected.has(s.start)} onChange={() => toggle(s.start)} aria-label={`Select Strike #${s.strike}`} />
             )}
-            <StrikeCoin strike={s.strike} rank={s.rank} size="sm" />
+            <StrikeCoin strike={s.strike} rank={s.rank} size="sm" part={BigInt(s.end) - BigInt(s.start)} whole={1_000_000_000_000n} />
             <div className="seg-main">
               <Traits traits={s.traits} rank={s.rank} />
               <span className="mono small muted">#{(BigInt(s.start) / BASE).toLocaleString()} – #{((BigInt(s.end) - 1n) / BASE).toLocaleString()}</span>

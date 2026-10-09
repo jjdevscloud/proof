@@ -1,6 +1,7 @@
 import { useApi } from '../api.ts';
 import { tier } from '../format.ts';
 import { ErrorNote, Loading } from '../components/ui.tsx';
+import { More } from '../components/More.tsx';
 
 type RulesResponse = {
   final: boolean;
@@ -31,13 +32,14 @@ export function Prelaunch() {
   return (
     <>
       <section className="hero">
-        <p className="eyebrow">Sequents · the $PROOF collector ledger</p>
         <h1>Launching soon.</h1>
+        <More>
         <p className="lede">
           Every $PROOF token will cost the same. Some of them will be rare. Rarity survives only in the wallet that bought it
           off the curve — or sealed in an envelope. Anything that leaves either place <strong className="melt-word">melts</strong>,
           forever.
         </p>
+        </More>
         <div className="hero-actions">
           <a className="btn btn-primary" href="#/rules">How it works</a>
           <a className="btn btn-ghost" href={REPO_RULES} target="_blank" rel="noreferrer">Read the rules file</a>
@@ -57,10 +59,10 @@ export function Prelaunch() {
         <div className="grid-2">
           <section className="panel">
             <h2>Random errors</h2>
-            <p className="muted small">
+            <More><p className="muted small">
               Assigned after the sale from a public Solana block, so nobody — including the team — can know or target them.
               At most one per Strike.
-            </p>
+            </p></More>
             <table className="table">
               <thead><tr><th>Error</th><th className="num">Strikes</th><th className="num">Points</th><th className="num">1 Strike</th><th className="num">10 Strikes</th></tr></thead>
               <tbody>
@@ -80,7 +82,7 @@ export function Prelaunch() {
 
           <section className="panel">
             <h2>Date tiers</h2>
-            <p className="muted small">Positional and public from the start: the earliest Strikes off the curve.</p>
+            <More><p className="muted small">Positional and public from the start: the earliest Strikes off the curve.</p></More>
             <table className="table">
               <thead><tr><th>Tier</th><th>Strikes</th><th className="num">Points</th></tr></thead>
               <tbody>
@@ -104,12 +106,14 @@ export function Prelaunch() {
 
       <section className="panel">
         <h2>How the launch works</h2>
+        <More>
         <ol className="steps">
           <li><strong>Commitment.</strong> Minutes before the token is created, a fingerprint of the rules above is posted on-chain, with a reveal deadline.</li>
           <li><strong>Launch.</strong> $PROOF goes live on pump.fun. Every token bought off the curve gets a number; each 1,000,000 is a Strike.</li>
           <li><strong>Seed.</strong> When the curve sells out (or at the deadline), the next Solana block's hash becomes the public seed. Only Strikes sold by then can receive errors.</li>
           <li><strong>Reveal.</strong> Traits are published — and anyone can recompute every Strike in their own browser from the rules and that block.</li>
         </ol>
+        </More>
       </section>
     </>
   );

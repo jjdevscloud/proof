@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { bumpVersion, subscribe, useApi } from './api.ts';
-import type { Config, Health } from './api.ts';
+import type { Config } from './api.ts';
 import { Vault, useWallet } from './chain.ts';
 import { short } from './format.ts';
 import { ErrorNote, Loading, Toasts } from './components/ui.tsx';
@@ -12,6 +12,7 @@ import { WalletPage } from './pages/Wallet.tsx';
 import { Rules } from './pages/Rules.tsx';
 import { Prelaunch } from './pages/Prelaunch.tsx';
 import { DEMO } from './demo.ts';
+import { Logo } from './components/Logo.tsx';
 
 const ConfigContext = createContext<{ config: Config; vault: Vault } | null>(null);
 export function useConfig(): Config {
@@ -36,10 +37,10 @@ function useRoute(): string[] {
 
 const NAV = [
   ['', 'Overview'],
+  ['rules', 'Rules'],
   ['strikes', 'Strikes'],
   ['desk', 'Desk'],
   ['wallet', 'My wallet'],
-  ['rules', 'Rules'],
 ] as const;
 
 export function App() {
@@ -106,15 +107,16 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
     <header className="site-header">
       <div className="container header-inner">
         <a className="brand" href="#/">
-          <span className="brand-mark" aria-hidden>S</span>
-          <span><strong>Sequents</strong> <span className="brand-sub">$PROOF</span></span>
+          <Logo />
+          <span className="brand-text"><strong>Sequents</strong></span>
         </a>
         <button className="icon-btn nav-toggle" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>☰</button>
         <nav className={open ? 'nav open' : 'nav'} onClick={() => setOpen(false)}>
           {NAV.filter(([path]) => !pending || path === '' || path === 'rules').map(([path, label]) => (
-            <a key={path} href={`#/${path}`} className={route === path ? 'active' : ''}>{label}</a>
+            <a key={path} href={`#/${path}`} className={route === path || (path === 'strikes' && route === 'strike') ? 'active' : ''}>{label}</a>
           ))}
         </nav>
+        <div className="header-right">
         <div className="wallet-btn">
           {pending ? (
             <span className="pill">Launching soon</span>
@@ -130,6 +132,8 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
               Connect wallet
             </button>
           )}
+        </div>
+        <a className="btn btn-primary btn-cycle" href="#/wallet">Check my wallet</a>
         </div>
       </div>
       {err && (
@@ -184,21 +188,10 @@ function WalletMenu({ address, onDisconnect }: { address: string; onDisconnect: 
 }
 
 function Footer() {
-  const { data } = useApi<Health>('/health');
   return (
     <footer className="site-footer">
-      <div className="container footer-inner small muted">
-        <span>
-          {data ? (
-            <>
-              <span className="dot" /> Ledger synced to slot <span className="mono">{data.syncedSlot.toLocaleString()}</span>
-              {' · '}fingerprint <span className="mono" title={data.fingerprint}>{data.fingerprint.slice(0, 12)}</span>
-            </>
-          ) : (
-            'Ledger status unavailable'
-          )}
-        </span>
-        <span>Rarity is defined by the Sequents rules, not by the token. <a href="#/rules">How it works</a></span>
+      <div className="container footer-inner">
+        <span>© {new Date().getFullYear()} Sequents</span>
       </div>
     </footer>
   );

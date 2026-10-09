@@ -1,58 +1,210 @@
-import { useState } from 'react';
+import type React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../api.ts';
-import type { StrikeRow } from '../api.ts';
-import { fmtTokens, pct, tier } from '../format.ts';
+import type { Stats, StrikeRow } from '../api.ts';
+import { TIER_NAMES, fmtTokens, pct, tier } from '../format.ts';
 import { MintSheet, SheetLegend } from '../components/MintSheet.tsx';
+import type { KeyFocus } from '../components/MintSheet.tsx';
 import { Bar, ErrorNote, Loading, StrikeCoin, Traits } from '../components/ui.tsx';
+import { BitmapCurve, GradientView } from '../components/StrikesLab.tsx';
+import { TraitIcon, shareText, traitShare } from '../components/TraitIcons.tsx';
+import { FilterMenu } from '../components/FilterMenu.tsx';
+import { SurvivalTable } from '../components/SurvivalTable.tsx';
 
 type Filter = 'all' | 'rare' | 'surviving';
+type Status = 'surviving' | 'melted' | 'unissued';
+
+// DRAFT filter labels, awaiting Harriet's approval.
+const TRAIT_NAMES = ['Genesis', 'Key Date', 'Final Strike', 'Common Date', 'Double Die', 'Wrong Planchet', 'Off Center', 'Clipped Planchet', 'Die Crack'];
+const STATUS_NAMES: [Status, string][] = [['surviving', 'Surviving'], ['melted', 'Fully melted'], ['unissued', 'Not yet issued']];
+
+// One square size for both views, and one height for the graphic area.
+const CELL = 10, GAP = 2;
 
 export function Strikes() {
   const { data, error } = useApi<StrikeRow[]>('/strikes');
-  const [filter, setFilter] = useState<Filter>('all');
-  const [jump, setJump] = useState('');
+  const stats = useApi<Stats>('/stats');
+  const s = stats.data;
+  const filter = 'all' as Filter;
+  // Each rarity's share of all Strikes, from the live counts by rank.
+  const byRank = s?.byRank ?? [];
+  const tierShare = (t: number) => shareText(byRank.filter((r) => tier(r.rank) === t).reduce((a, r) => a + r.strikes, 0), byRank.reduce((a, r) => a + r.strikes, 0));
 
+  const [jump, setJump] = useState('');
+  // Remember the chosen tab (this browser only), so a Strike's page can link back to the same view.
+  type View = 'curve' | 'gradient' | 'sheet';
+  const [view, setViewState] = useState<View>(() => {
+    try {
+      const v = sessionStorage.getItem('strikes-view');
+      return v === 'sheet' || v === 'gradient' ? v : 'curve';
+    } catch { return 'curve'; }
+  });
+  const setView = (v: View) => {
+    setViewState(v);
+    try { sessionStorage.setItem('strikes-view', v); } catch { /* private mode: just don't remember */ }
+  };
+  const [hovered, setHovered] = useState<KeyFocus>(null);
+  const [pinned, setPinned] = useState<KeyFocus>(null);
+  const focus = hovered ?? pinned;
+  // The panel keeps the mint sheet's size on both tabs; the curve is drawn to fit that space.
+  const vizRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0, cell: 12, gap: 3 });
+  useEffect(() => {
+    const el = vizRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const c = el.querySelector('.cell'), sheet = el.querySelector('.sheet');
+      setBox({
+        w: el.clientWidth,
+        h: el.clientHeight,
+        cell: c ? c.getBoundingClientRect().width : 12,
+        gap: sheet ? parseFloat(getComputedStyle(sheet).columnGap) || 3 : 3,
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [data]);
+  const [tip, setTip] = useState<{ text: string; tier: string; x: number; y: number } | null>(null);
+  const onHover = (e: React.MouseEvent) => {
+    const el = (e.target as Element).closest('[data-tip]');
+    setTip(el ? { text: el.getAttribute('data-tip')!, tier: el.getAttribute('data-tier') ?? '', x: e.clientX, y: e.clientY } : null);
+  };
+
+  // The list, ten to a page.
+  const PER_PAGE = 10;
+  const [page, setPage] = useState(0);
   const rows = (data ?? []).filter((s) => (filter === 'rare' ? s.rank > 0 : filter === 'surviving' ? BigInt(s.surviving) > 0n : BigInt(s.issued) > 0n));
-  const notable = [...rows].sort((a, b) => b.rank - a.rank || a.strike - b.strike).slice(0, 60);
+  // Search: a Strike number, and filters by rarity, trait and status. Within a group any match counts,
+  // across groups all must match. With nothing chosen the list shows the rarest Strikes.
+  const [tiers, setTiers] = useState<number[]>([]);
+  const [traits, setTraits] = useState<string[]>([]);
+  const [statuses, setStatuses] = useState<Status[]>([]);
+  const toggle = <T,>(list: T[], set: (v: T[]) => void, v: T) => { set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]); setPage(0); };
+  const num = jump.replace(/[#,\s]/g, '');
+  const searching = num !== '' || tiers.length > 0 || traits.length > 0 || statuses.length > 0;
+  const statusOf = (s: StrikeRow): Status => (BigInt(s.issued) === 0n ? 'unissued' : BigInt(s.surviving) === 0n ? 'melted' : 'surviving');
+  const found = (data ?? []).filter((s) =>
+    (num === '' || String(s.strike).startsWith(num)) &&
+    (!tiers.length || tiers.includes(tier(s.rank))) &&
+    (!traits.length || (s.traits ?? []).some((t) => traits.includes(t))) &&
+    (!statuses.length || statuses.includes(statusOf(s))));
+  const notable = searching
+    ? [...found].sort((a, b) => b.rank - a.rank || a.strike - b.strike)
+    : [...rows].sort((a, b) => b.rank - a.rank || a.strike - b.strike).slice(0, 50);
+  const clear = () => { setJump(''); setTiers([]); setTraits([]); setStatuses([]); setPage(0); };
+  const pages = Math.max(1, Math.ceil(notable.length / PER_PAGE));
+  const pageRows = notable.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
 
   return (
     <>
       <div className="page-head">
-        <h1>Strikes</h1>
-        <form
-          className="inline-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (jump.trim()) location.hash = `#/strike/${Number(jump.replace('#', ''))}`;
-          }}
-        >
-          <input placeholder="Go to strike #" value={jump} onChange={(e) => setJump(e.target.value)} inputMode="numeric" aria-label="Strike number" />
-          <button className="btn btn-ghost">Go</button>
-        </form>
+        <div>
+          <h1>Strikes</h1>
+          {/* DRAFT subtitle, awaiting Harriet's approval. */}
+          <p className="muted page-sub">The live $PROOF ledger, showing all 794 Strikes, their rarity, and how much of each survives, read from the chain by the indexer.</p>
+        </div>
       </div>
 
-      <section className="panel">
-        <div className="segmented" role="tablist">
-          {(['all', 'rare', 'surviving'] as const).map((f) => (
-            <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>
-              {f === 'all' ? 'All' : f === 'rare' ? 'Rare only' : 'Still surviving'}
-            </button>
-          ))}
+
+      <div className="tabs" role="tablist" aria-label="View">
+        {(['curve', 'sheet', 'gradient'] as const).map((v) => (
+          <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'tab on' : 'tab'} onClick={() => setView(v)}>
+            {v === 'gradient' ? (
+              // a little gradient: blocks shading from one colour to the next
+              <svg className="tab-icon tab-icon-gradient" viewBox="0 0 13 9" aria-hidden shapeRendering="crispEdges">
+                {[0, 1, 2, 3].map((x) => <rect key={x} className={`gi${x}`} x={x * 3.4} y={0} width={2.6} height={9} />)}
+              </svg>
+            ) : v === 'sheet' ? (
+              // a little sheet: a grid of blocks
+              <svg className="tab-icon" viewBox="0 0 13 9" aria-hidden shapeRendering="crispEdges">
+                {[0, 1, 2, 3].flatMap((x) => [0, 1, 2].map((y) => <rect key={`${x},${y}`} x={x * 3.4} y={y * 3.2} width={2.6} height={2.4} />))}
+              </svg>
+            ) : (
+              // a little curve: columns of blocks rising
+              <svg className="tab-icon" viewBox="0 0 13 9" aria-hidden shapeRendering="crispEdges">
+                {[1.6, 2.6, 4, 6, 9].map((h, x) => <rect key={x} x={x * 2.7} y={9 - h} width={2} height={h} />)}
+              </svg>
+            )}
+            {v === 'sheet' ? 'Mint sheet' : v === 'gradient' ? 'Gradient' : 'Bonding curve'}
+          </button>
+        ))}
+      </div>
+
+      <section className="panel tabbed" data-focus={focus ?? undefined}>
+        {/* DRAFT lines, awaiting Harriet's approval. */}
+        <div className="view-head">
+        <p className="muted view-line">
+          {view === 'sheet'
+            ? 'Every Strike as one block, numbered 0 to 793. Colour is rarity.'
+            : view === 'gradient'
+              ? 'The same Strikes blended into one gradient, in buying order. Colour is rarity.'
+              : 'The same Strikes along the bonding curve, in buying order. Each column is a few Strikes.'}
+        </p>
+        <SheetLegend shares={[0, 1, 2, 3].map(tierShare)} focus={focus} onFocus={setHovered} onPin={(f) => setPinned(pinned === f ? null : f)} />
         </div>
         {error && <ErrorNote error={error} />}
-        {data ? <MintSheet strikes={data} filter={filter} /> : <Loading />}
-        <SheetLegend />
+        <div
+          className="viz"
+          ref={vizRef}
+          onMouseMove={onHover}
+          onMouseLeave={() => setTip(null)}
+          // One square size for both views; the sheet fills the full width, row after row from Strike 0.
+          style={{ '--cols': box.w ? Math.floor((box.w + GAP) / (CELL + GAP)) : 100 } as React.CSSProperties}
+        >
+          {!data ? <Loading /> : (
+            <>
+              <div style={view !== 'sheet' ? { visibility: 'hidden' } : undefined}><MintSheet strikes={data} filter={filter} /></div>
+              {view === 'curve' && box.w > 0 && <div className="curve-view"><BitmapCurve strikes={data} width={box.w} height={box.h} cell={CELL} gap={GAP} /></div>}
+              {view === 'gradient' && <div className="curve-view"><GradientView strikes={data} focus={focus} /></div>}
+            </>
+          )}
+        </div>
+        {tip && (
+          <div className="hover-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} aria-hidden>
+            <i className={`tip-swatch tip-${tip.tier}`} />
+            <span className="tip-body">
+              <strong>{tip.text.split('|')[0]}</strong>
+              <span>{tip.text.split('|')[1]}</span>
+            </span>
+          </div>
+        )}
       </section>
 
       <section className="panel">
-        <h2>{filter === 'rare' ? 'Rare strikes' : filter === 'surviving' ? 'Strikes with survivors' : 'Issued strikes'}</h2>
-        {data && !notable.length && <p className="muted">Nothing here yet.</p>}
+        <div className="panel-head panel-head-stack">
+          <h2>{searching ? `${notable.length} ${notable.length === 1 ? 'Strike' : 'Strikes'} found` : `Top ${notable.length} rarest Strikes`}</h2>
+          {/* DRAFT line, awaiting Harriet's approval. */}
+          <p className="muted list-sub">{searching ? 'Matching your search, rarest first.' : 'Ranked by rarity. Open any other Strike from the map above.'}</p>
+        </div>
+        {/* Search the list below: by Strike number, trait or status. The chart key covers rarity. DRAFT wording, awaiting Harriet's approval. */}
+        <section className="strike-search list-search">
+          <form
+            className="search-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (num && found.length === 1) location.hash = `#/strike/${found[0].strike}`;
+              else if (num) location.hash = `#/strike/${Number(num)}`;
+            }}
+          >
+            <input placeholder="Search by Strike number" value={jump} onChange={(e) => { setJump(e.target.value); setPage(0); }} inputMode="numeric" aria-label="Strike number" />
+            <FilterMenu label="Trait" options={TRAIT_NAMES.map((n) => ({ value: n, label: n, mark: <TraitIcon trait={n} />, note: traitShare(n), sep: n === 'Double Die', heading: n === 'Genesis' ? 'Date, set by when it was bought' : n === 'Double Die' ? 'Error, assigned at the reveal' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
+            <FilterMenu label="Status" options={STATUS_NAMES.map(([k, n]) => ({ value: k, label: n }))} chosen={statuses} onToggle={(v) => toggle(statuses, setStatuses, v)} />
+            <button className="btn btn-primary">Search</button>
+          </form>
+          {searching && (
+            <p className="search-summary">
+              <span className="muted">{notable.length} {notable.length === 1 ? 'Strike' : 'Strikes'} match</span>
+              <button type="button" className="chip-clear" onClick={clear}>Clear all</button>
+            </p>
+          )}
+        </section>
+        {data && !notable.length && <p className="muted">{searching ? 'No Strikes match.' : 'Nothing here yet.'}</p>}
         <ul className="strike-list">
-          {notable.map((s) => {
+          {pageRows.map((s) => {
             const survivalPct = pct(s.surviving, s.issued);
             return (
               <li key={s.strike}>
-                <StrikeCoin strike={s.strike} rank={s.rank} />
+                <StrikeCoin strike={s.strike} rank={s.rank} part={s.surviving} whole={s.issued} />
                 <div className="strike-list-main">
                   <a href={`#/strike/${s.strike}`} className="strike-title">Strike #{s.strike}</a>
                   <Traits traits={s.traits} rank={s.rank} />
@@ -65,8 +217,29 @@ export function Strikes() {
             );
           })}
         </ul>
-        {rows.length > notable.length && <p className="muted small">Showing the {notable.length} rarest. Use the sheet above to open any strike.</p>}
+        {pages > 1 && (
+          <nav className="pager" aria-label="Pages">
+            <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>← Previous</button>
+            <span className="pager-pages">
+              {Array.from({ length: pages }, (_, i) => (
+                <button key={i} type="button" className={i === page ? 'on' : ''} aria-current={i === page ? 'page' : undefined} onClick={() => setPage(i)}>{i + 1}</button>
+              ))}
+            </span>
+            <button type="button" disabled={page === pages - 1} onClick={() => setPage(page + 1)}>Next →</button>
+          </nav>
+        )}
       </section>
+
+      <section className="panel">
+        <h2>Survival by rarity</h2>
+        {!s ? <Loading /> : !s.revealed ? (
+          <p className="muted">Traits are sealed until the reveal. Until then every Strike counts as equal, and the highest-numbered tokens leave a wallet first.</p>
+        ) : (
+          <SurvivalTable rows={s.byRank} />
+        )}
+      </section>
+
     </>
   );
 }
+

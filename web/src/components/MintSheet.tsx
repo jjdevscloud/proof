@@ -22,8 +22,9 @@ export function MintSheet({ strikes, filter = 'all' }: { strikes: StrikeRow[]; f
             href={`#/strike/${s.strike}`}
             className={`cell t${tier(s.rank)} ${state}${dim ? ' dim' : ''}`}
             style={{ '--f': frac } as CSSProperties}
-            title={label}
             aria-label={label}
+            data-tip={`Strike #${s.strike}|${TIER_NAMES[tier(s.rank)]}${s.traits ? ` · ${s.traits.join(', ')}` : ''} · ${issued === 0n ? 'not yet issued' : `${fmtTokens(s.surviving)} of ${fmtTokens(s.issued)} surviving`}`}
+            data-tier={issued === 0n ? 'u' : surviving === 0n ? 'm' : tier(s.rank)}
           />
         );
       })}
@@ -31,14 +32,32 @@ export function MintSheet({ strikes, filter = 'all' }: { strikes: StrikeRow[]; f
   );
 }
 
-export function SheetLegend() {
+export type KeyFocus = 't0' | 't1' | 't2' | 't3' | 'melted' | 'unissued' | null;
+
+// Hover previews a tier; click locks it (click again to release).
+// `shares` puts each rarity's share of all Strikes beside it.
+export function SheetLegend({ focus = null, onFocus, onPin, shares }: { focus?: KeyFocus; onFocus?: (f: KeyFocus) => void; onPin?: (f: KeyFocus) => void; shares?: string[] } = {}) {
+  const item = (f: Exclude<KeyFocus, null>, swatch: string, label: string, note?: string) => (
+    <button
+      key={f}
+      type="button"
+      className={focus === f ? 'key-item on' : 'key-item'}
+      onMouseEnter={() => onFocus?.(f)}
+      onMouseLeave={() => onFocus?.(null)}
+      onFocus={() => onFocus?.(f)}
+      onBlur={() => onFocus?.(null)}
+      onClick={() => onPin?.(f)}
+      aria-pressed={focus === f}
+    >
+      <i className={`swatch ${swatch}`} />{label}{note && <span className="key-share">{note}</span>}
+    </button>
+  );
   return (
-    <div className="legend small">
-      {TIER_NAMES.map((n, i) => (
-        <span key={n}><i className={`swatch t${i}`} />{n}</span>
-      ))}
-      <span><i className="swatch melted-swatch" />Melted</span>
-      <span><i className="swatch unissued-swatch" />Not yet issued</span>
+    <div className={onFocus ? 'legend small key-interactive' : 'legend small'}>
+      {onFocus && <span className="key-hint">Filter</span>}
+      {TIER_NAMES.map((n, i) => item(`t${i}` as Exclude<KeyFocus, null>, `t${i}`, n, shares?.[i]))}
+      {item('melted', 'melted-swatch', 'Melted')}
+      {item('unissued', 'unissued-swatch', 'Not yet issued')}
     </div>
   );
 }

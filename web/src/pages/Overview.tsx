@@ -1,91 +1,52 @@
-import { useApi } from '../api.ts';
-import type { Stats, StrikeRow, TxChanges } from '../api.ts';
-import { TIER_NAMES, fmtCompact, pct, tier } from '../format.ts';
-import { ActivityFeed } from '../components/Activity.tsx';
-import { MintSheet, SheetLegend } from '../components/MintSheet.tsx';
-import { Bar, ErrorNote, Loading, Stat } from '../components/ui.tsx';
+import { HeroWord } from '../components/HeroWord.tsx';
+import { ScrollLines } from '../components/ScrollLines.tsx';
+import { Mechanisms } from '../components/Mechanisms.tsx';
+import { TraitsTable } from '../components/TraitsTable.tsx';
+import { VerifyBox } from '../components/Closer.tsx';
+import { BlockField } from '../components/BlockField.tsx';
 
 export function Overview() {
-  const stats = useApi<Stats>('/stats');
-  const strikes = useApi<StrikeRow[]>('/strikes');
-  const activity = useApi<TxChanges[]>('/activity?limit=30');
-  const s = stats.data;
 
   return (
     <>
       <section className="hero">
-        <p className="eyebrow">Sequents · the $PROOF collector ledger</p>
-        <h1>Every token costs the same.<br />Some of them are rare.</h1>
-        <p className="lede">
-          Rarity survives only in the wallet that bought it off the curve — or sealed in an envelope.
-          Anything that leaves either place <strong className="melt-word">melts</strong> into ordinary $PROOF, forever.
-        </p>
-        <div className="hero-actions">
-          <a className="btn btn-primary" href="#/wallet">Check my wallet</a>
-          <a className="btn btn-ghost" href="#/rules">How it works</a>
+        <div className="caption">
+          <h1>An Ordinal Theory for<br />Solana Tokens.</h1>
         </div>
+        <div className="frame hero-frame"><HeroWord text="SEQUENTS" /></div>
+        <div className="trio">
+          <p><strong>Sequents</strong> <span>the rules that number every token and decide which ones are rare.</span></p>
+          <p><strong>$PROOF</strong> <span>the first token to implement<br />Sequent Theory.</span></p>
+          <p><strong>Strikes</strong> <span>a run of one million tokens, the thing that holds traits and rarity.</span></p>
+        </div>
+        {/* An arrow under the middle line so it is clear the page carries on below. */}
+        <svg className="scroll-cue" viewBox="0 0 16 28" aria-hidden><path d="M8 1v25M1 19l7 7 7-7" /></svg>
       </section>
 
-      {stats.error && <ErrorNote error={stats.error} />}
-      {s && (
-        <section className="stats-row">
-          <Stat
-            label="Rarity surviving"
-            value={`${pct(s.surviving, s.issued)}%`}
-            sub={`${fmtCompact(s.surviving)} of ${fmtCompact(s.issued)} issued tokens`}
-          />
-          <Stat label="Melted forever" value={fmtCompact(s.melted)} sub="tokens that left their origin" />
-          <Stat label="Sealed in envelopes" value={fmtCompact(s.sealed)} sub={`${s.envelopes} envelope${s.envelopes === 1 ? '' : 's'}`} />
-          <Stat label="On the desk" value={s.listed} sub={<a href="#/desk">Browse listings →</a>} />
-        </section>
-      )}
+      <ScrollLines
+        text="In 2022, Casey Rodarmor gave every Bitcoin sat a number, and some sats became rare. Solana never had an equivalent because Solana wallets store balances not individual coins, so a token's history disappears the moment it moves. Sequents proposes a solution: keep rare tokens where their history can be proven, in the account that bought them, or sealed in an envelope that never moves them. Every $PROOF has a number, and some numbers are rare."
+        after={
+          <>
+            <p className="muted">Read Our Proposal</p>
+            <a className="btn btn-primary" href={`${import.meta.env.BASE_URL}Sequents_Whitepaper.pdf`} target="_blank" rel="noreferrer">Whitepaper</a>
+          </>
+        }
+      />
 
-      <div className="grid-2">
-        <section className="panel">
-          <div className="panel-head">
-            <h2>The mint sheet</h2>
-            <a href="#/strikes" className="small">All strikes →</a>
-          </div>
-          <p className="muted small">Each square is a Strike of 1,000,000 tokens. Colour is rarity; fill is how much still survives.</p>
-          {strikes.data ? <MintSheet strikes={strikes.data} /> : <Loading />}
-          <SheetLegend />
-        </section>
+      <Mechanisms />
 
-        <section className="panel">
-          <h2>Survival by rarity</h2>
-          {!s ? <Loading /> : !s.revealed ? (
-            <p className="muted">Traits are sealed until the reveal. Until then every Strike counts as equal, and the highest-numbered tokens leave a wallet first.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr><th>Rarity</th><th className="num">Strikes</th><th>Surviving</th></tr>
-              </thead>
-              <tbody>
-                {s.byRank.map((r) => (
-                  <tr key={r.rank}>
-                    <td><span className={`tier-dot t${tier(r.rank)}`} />{TIER_NAMES[tier(r.rank)]} <span className="muted small">rank {r.rank}</span></td>
-                    <td className="num mono">{r.strikes}</td>
-                    <td>
-                      <div className="bar-row">
-                        <Bar value={pct(r.surviving, r.issued)} tierClass={`t${tier(r.rank)}`} />
-                        <span className="mono small">{BigInt(r.issued) === 0n ? '—' : `${pct(r.surviving, r.issued)}%`}</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      </div>
+      <TraitsTable />
 
-      <section className="panel">
-        <div className="panel-head">
-          <h2>Live activity</h2>
-          <span className="live small"><span className="dot" /> live</span>
-        </div>
-        {activity.data ? <ActivityFeed items={activity.data} /> : <Loading />}
-      </section>
+      <ScrollLines
+        className="verify"
+        text="Nothing in Sequents asks to be trusted. You can check every trait yourself with the following steps, or verify any wallet's holdings below."
+        link={{ phrase: 'following steps', href: `${import.meta.env.BASE_URL}Sequents_Whitepaper.pdf#page=8` }}
+        after={<VerifyBox />}
+      />
+
+
+
+      <section className="closer"><BlockField /></section>
     </>
   );
 }

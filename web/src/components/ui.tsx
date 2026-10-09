@@ -2,22 +2,39 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import type { Segment } from '../api.ts';
 import { TIER_NAMES, explorer, fmtRange, fmtTokens, short, tier } from '../format.ts';
+import { TraitIcon, traitShare } from './TraitIcons.tsx';
+import { ENV_H, ENV_W, envelopeShape } from './HeroWord.tsx';
 
-export function StrikeCoin({ strike, rank, size = 'md' }: { strike: number; rank: number; size?: 'sm' | 'md' | 'lg' }) {
+// A Strike's picture: the Sequents envelope, its 28 blocks filling in the Strike's rarity colour by the share of
+// tokens that survives (`part / whole`), melted blocks grey, from the bottom up. Not yet bought: an outline.
+// Without part/whole it is solid in its colour.
+const ENVELOPE = envelopeShape(ENV_W, ENV_H, 0)
+  .map(([dc, dr]) => [dc + (ENV_W - 1) / 2, dr + (ENV_H - 1) / 2])
+  .sort((p, q) => q[1] - p[1] || p[0] - q[0]);
+
+export function StrikeCoin({ strike, rank, size = 'md', part, whole }: { strike: number; rank: number; size?: 'sm' | 'md' | 'lg'; part?: string | bigint; whole?: string | bigint }) {
+  const unbought = whole !== undefined && BigInt(whole) === 0n;
+  const share = whole === undefined || part === undefined ? 1 : unbought ? 0 : Number((BigInt(part) * 1000n) / BigInt(whole)) / 1000;
+  const lit = Math.round(share * ENVELOPE.length);
   return (
-    <a className={`coin coin-${size} t${tier(rank)}`} href={`#/strike/${strike}`} title={`Strike #${strike} · ${TIER_NAMES[tier(rank)]}`}>
-      <span className="coin-hash">#</span>
-      {strike}
+    <a className={`coin coin-${size} t${tier(rank)}`} href={`#/strike/${strike}`} title={`Strike #${strike} · ${TIER_NAMES[tier(rank)]}${whole !== undefined ? ` · ${Math.round(share * 1000) / 10}% surviving` : ''}`}>
+      <svg className="coin-grid" viewBox={`0 0 ${ENV_W} ${ENV_H}`} aria-hidden shapeRendering="crispEdges">
+        {ENVELOPE.map(([x, y], i) => (
+          <rect key={i} className={unbought ? 'cc-out' : i < lit ? 'cc-on' : 'cc-off'} x={x + 0.07} y={y + 0.07} width={0.86} height={0.86} />
+        ))}
+      </svg>
+      {size === 'sm' && <span className="coin-num">#{strike}</span>}
     </a>
   );
 }
 
-export function Traits({ traits, rank }: { traits: string[] | null; rank: number }) {
+// `share` adds each trait's share of all Strikes after its name.
+export function Traits({ traits, rank, share = false }: { traits: string[] | null; rank: number; share?: boolean }) {
   if (!traits) return <span className="trait trait-pending">Unrevealed</span>;
   return (
     <span className="traits">
       {traits.map((t) => (
-        <span key={t} className={`trait t${tier(rank)}`}>{t}</span>
+        <span key={t} className={`trait t${tier(rank)}`}><TraitIcon trait={t} />{t}{share && <span className="trait-share">{traitShare(t)}</span>}</span>
       ))}
     </span>
   );
@@ -30,7 +47,7 @@ export function SegmentList({ segments, empty = 'Nothing rare here.' }: { segmen
     <ul className="segments">
       {segments.map((s) => (
         <li key={s.start}>
-          <StrikeCoin strike={s.strike} rank={s.rank} size="sm" />
+          <StrikeCoin strike={s.strike} rank={s.rank} size="sm" part={BigInt(s.end) - BigInt(s.start)} whole={1_000_000_000_000n} />
           <div className="seg-main">
             <Traits traits={s.traits} rank={s.rank} />
             <span className="mono small muted">{fmtRange(s.start, s.end)}</span>
