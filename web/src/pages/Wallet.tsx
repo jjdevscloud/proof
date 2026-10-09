@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, useApi } from '../api.ts';
-import type { Envelope, Preview, Segment, WalletView } from '../api.ts';
+import type { Envelope, Health, Preview, Segment, WalletView } from '../api.ts';
 import { useConfig, useVault } from '../App.tsx';
 import { isAddress, useWallet } from '../chain.ts';
 import { BASE, CLUSTER, TIER_NAMES, feeOf, feePct, fmtTokens, lamportsFromSol, short, sol, tier } from '../format.ts';
@@ -145,6 +145,7 @@ function OriginAccount({ owner, account, common, segments, own }: { owner: strin
   const vault = useVault();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sealing, setSealing] = useState(false);
+  const [sealErr, setSealErr] = useState<string | null>(null);
   const chosen = segments.filter((s) => selected.has(s.start));
   const chosenTotal = chosen.reduce((t, s) => t + BigInt(s.end) - BigInt(s.start), 0n);
   const toggle = (start: string) => {
@@ -203,9 +204,26 @@ function OriginAccount({ owner, account, common, segments, own }: { owner: strin
             Moves exactly these {fmtTokens(chosenTotal)} tokens into a new envelope that only you control. Their rarity stays intact,
             and you can then list, gift or keep the envelope. Creating it costs about 0.004 SOL of rent, returned when it is opened.
           </p>
+          {sealErr && <ErrorNote error={sealErr} />}
           <button
             className="btn btn-primary wide"
             onClick={async () => {
+              setSealErr(null);
+              // The ledger runs behind the chain. Sealing tokens that already left this account (sealed
+              // earlier, sold) makes an invalid seal, which melts other tokens: check fresh state first.
+              try {
+                const [last, health, fresh] = await Promise.all([
+                  vault.lastActivitySlot(account), api<Health>('/health'), api<WalletView>(`/wallet/${owner}`),
+                ]);
+                if (last > health.syncedSlot) {
+                  return setSealErr('Your latest $PROOF transaction is still being indexed. Wait a few seconds and try again: sealing now could melt tokens.');
+                }
+                const held = fresh.accounts.find((a) => a.account === account)?.segments ?? [];
+                const stillHeld = chosen.every((c) => held.some((h) => BigInt(h.start) <= BigInt(c.start) && BigInt(c.end) <= BigInt(h.end)));
+                if (!stillHeld) return setSealErr('Some of these tokens are no longer in this account (already sealed or moved). Reload the page.');
+              } catch (x) {
+                return setSealErr(`Could not check your account: ${(x as Error).message}`);
+              }
               const sig = await runTx('Seal', () => vault.seal(owner, account, chosen.map((s) => ({ start: BigInt(s.start), end: BigInt(s.end) }))));
               if (sig) {
                 setSealing(false);
