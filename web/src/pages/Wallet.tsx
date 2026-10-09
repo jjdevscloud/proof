@@ -9,6 +9,9 @@ import { RollAgain, RollPanel } from '../components/Roll.tsx';
 import { EnvelopeDetails, EnvelopePic } from './Desk.tsx';
 import { VerifyBox } from '../components/Closer.tsx';
 
+// While the reveal is being reviewed, show it on every connect (true). Once approved: false, first connect only.
+const REVEAL_EVERY_TIME = true;
+
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
   const wallet = useWallet();
   const address = routeAddress ?? wallet.address;
@@ -39,6 +42,8 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
     const key = `sequents-seen:${address}`;
     let seen: string[] | null = null;
     try { seen = JSON.parse(localStorage.getItem(key) ?? 'null'); } catch { seen = null; }
+    // PREVIEW: while Harriet reviews the reveal it plays on every connect. Set REVEAL_EVERY_TIME to false once approved.
+    if (REVEAL_EVERY_TIME) seen = null;
     const strikes = data.accounts.flatMap((a) => a.segments);
     const newStrikes = seen ? strikes.filter((x) => !seen!.includes(`s${x.start}`)) : strikes;
     const newEnvelopes = seen ? data.envelopes.filter((x) => !seen!.includes(`e${x.address}`)) : data.envelopes;
