@@ -25,5 +25,5 @@ solana program deploy target/deploy/proof_vault.so --program-id "$PROGRAM_KEY" \
 PROGRAM_ID=$(solana address -k "$PROGRAM_KEY")
 solana program set-upgrade-authority "$PROGRAM_ID" --new-upgrade-authority "$SQUADS_VAULT" \
   --skip-new-upgrade-authority-signer-check -k "$DEPLOYER" -u "$RPC_URL"
-solana program show "$PROGRAM_ID" -u "$RPC_URL"
+solana program show "$PROGRAM_ID" -u "$RPC_URL" -k "$DEPLOYER"
 echo "program: $PROGRAM_ID"
