@@ -86,30 +86,45 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
     };
   }, [vault, signature]);
   const t = result ? tier(result.points) : 0;
+  // The same reveal as a first connect: the rarity gradient behind one square card. While the block is awaited the
+  // coin spins and the card trembles; when the result lands it pops in. The result itself is unchanged.
   return (
-    <Modal title={result ? 'Your roll' : 'Striking…'} onClose={onClose}>
-      <div className={`roll-reveal${result ? ` roll-done t${t}` : ''}`}>
-        <RollCoin points={result?.points ?? null} name={result?.name} spinning={!result && !err} />
-        {result ? (
-          <>
-            <strong className="roll-name">{result.name}</strong>
-            <span className="roll-tier">{TIER_NAMES[t]} · {result.points} points</span>
-          </>
-        ) : (
-          <span className="muted small">{err ? '' : 'The next Solana block decides…'}</span>
+    <div className="modal-backdrop reveal-backdrop">
+      <div className="modal reveal reveal-gradient reveal-single" role="dialog" aria-modal="true" aria-label="Your roll">
+        {/* DRAFT wording, awaiting Harriet's approval. */}
+        <div className="reveal-head">
+          <span className="reveal-tag">{result ? 'Your roll' : 'Rolling'}</span>
+        </div>
+        <div className="reveal-grid">
+          <div className={`reveal-card in${result ? ' landed' : ' waiting'}`}>
+            <div className={`reveal-square strike-mini roll-square${result ? ` t${t}` : ''}`}>
+              <RollCoin points={result?.points ?? null} name={result?.name} spinning={!result && !err} />
+              {result ? (
+                <>
+                  <strong className="strike-title">{result.name}</strong>
+                  <span className="rarity-tag"><i className={`tier-dot t${t}`} />{TIER_NAMES[t]}</span>
+                  <span className="small muted">{result.points} points</span>
+                </>
+              ) : (
+                <span className="small muted">{err ? '' : 'The next Solana block decides'}</span>
+              )}
+            </div>
+          </div>
+        </div>
+        {err && <ErrorNote error={err} />}
+        {result && (
+          <p className="reveal-note">
+            {result.points > 0
+              ? 'Your envelope now carries this rare tier. List it on the desk, gift it, or keep it. Withdrawing the tokens melts it back to ordinary.'
+              : 'Ordinary this time. You can roll the same envelope again from your wallet.'}{' '}
+            Worked out in your browser from the seed block. The ledger records it once the block is final, in about 20 seconds.
+          </p>
         )}
+        <div className="reveal-foot">
+          <button className="btn btn-primary" onClick={onClose}>{result ? 'Done' : 'Close'}</button>
+        </div>
       </div>
-      {err && <ErrorNote error={err} />}
-      {result && (
-        <p className="small muted">
-          {result.points > 0
-            ? 'Your envelope now carries this rare tier. List it on the collector desk, gift it, or keep it. Withdrawing the tokens melts it back to ordinary.'
-            : 'Ordinary this time. You can roll the same envelope again from your wallet.'}{' '}
-          Computed in your browser from the seed block; the ledger records it once the block is finalized (~20 s).
-        </p>
-      )}
-      <button className="btn btn-primary wide" onClick={onClose}>{result ? 'Done' : 'Close'}</button>
-    </Modal>
+    </div>
   );
 }
 

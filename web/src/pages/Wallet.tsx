@@ -34,7 +34,7 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
 
   // The reveal: the first time a wallet connects, everything it holds is revealed one by one. After that,
   // only what is new since the last visit. What has been seen is kept in this browser only (display only).
-  const [reveal, setReveal] = useState<{ strikes: Segment[]; envelopes: Envelope[]; first: boolean } | null>(null);
+  const [reveal, setReveal] = useState<{ strikes: Segment[]; first: boolean } | null>(null);
   const revealChecked = useRef<string | null>(null);
   useEffect(() => {
     if (!own || !address || !data || revealChecked.current === address) return;
@@ -46,9 +46,9 @@ export function WalletPage({ address: routeAddress }: { address: string | null }
     if (REVEAL_EVERY_TIME) seen = null;
     const strikes = data.accounts.flatMap((a) => a.segments);
     const newStrikes = seen ? strikes.filter((x) => !seen!.includes(`s${x.start}`)) : strikes;
-    const newEnvelopes = seen ? data.envelopes.filter((x) => !seen!.includes(`e${x.address}`)) : data.envelopes;
-    try { localStorage.setItem(key, JSON.stringify([...strikes.map((x) => `s${x.start}`), ...data.envelopes.map((x) => `e${x.address}`)])); } catch { /* private mode: no memory, no harm */ }
-    if (newStrikes.length || newEnvelopes.length) setReveal({ strikes: newStrikes, envelopes: newEnvelopes, first: !seen });
+    // Only Strikes are revealed: on a first connect they are what you bought off the curve. Envelopes come later.
+    try { localStorage.setItem(key, JSON.stringify(strikes.map((x) => `s${x.start}`))); } catch { /* private mode: no memory, no harm */ }
+    if (newStrikes.length) setReveal({ strikes: newStrikes, first: !seen });
   }, [own, address, data]);
 
   if (!address && wallet.restoring) return <Loading what="Reconnecting your wallet" />;
@@ -455,44 +455,49 @@ function EnvelopeHead({ e }: { e: Envelope }) {
   );
 }
 
-// The reveal pop-up: what the wallet holds (or what is new), least rare first, each card turning over a moment
-// apart, the rarest last in the colour cycling frame. Skip shows everything at once. Display only.
-function Reveal({ strikes, envelopes, first, onDone }: { strikes: Segment[]; envelopes: Envelope[]; first: boolean; onDone: () => void }) {
-  const envRank = (e: Envelope) => Math.max(e.segments.reduce((m, x) => Math.max(m, x.rank), 0), e.roll?.points ?? 0);
-  const items = [
-    ...strikes.map((x) => ({ key: `s${x.start}`, rank: x.rank, node: <StrikeCardView strike={x.strike} rank={x.rank} traits={x.traits} part={BigInt(x.end) - BigInt(x.start)} whole={1_000_000_000_000n} sub={`${fmtTokens(BigInt(x.end) - BigInt(x.start))} tokens`} /> })),
-    ...envelopes.map((e) => ({ key: `e${e.address}`, rank: envRank(e), node: <EnvelopeHead e={e} /> })),
-  ].sort((a, b) => a.rank - b.rank);
+// The reveal pop-up: on a gradient of the rarity colours, each Strike pops in as a square card one after another,
+// least rare first, with a little shake; the rarest lands last in the moving frame. Once all are out it holds a
+// moment and closes by itself (or Skip / See my wallet). Display only.
+function Reveal({ strikes, first, onDone }: { strikes: Segment[]; first: boolean; onDone: () => void }) {
+  const items = [...strikes].sort((a, b) => a.rank - b.rank);
   const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [shown, setShown] = useState(still ? items.length : 0);
-  useEffect(() => {
-    if (shown >= items.length) return;
-    const t = setTimeout(() => setShown((n) => n + 1), shown === 0 ? 500 : 750);
-    return () => clearTimeout(t);
-  }, [shown, items.length]);
   const done = shown >= items.length;
+  useEffect(() => {
+    if (done) {
+      const t = setTimeout(onDone, 3500);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setShown((n) => n + 1), shown === 0 ? 600 : 900);
+    return () => clearTimeout(t);
+  }, [shown, done, onDone]);
   return (
     <div className="modal-backdrop reveal-backdrop">
-      <div className="modal reveal" role="dialog" aria-modal="true" aria-label="Your reveal">
+      <div className="modal reveal reveal-gradient" role="dialog" aria-modal="true" aria-label="Your reveal">
         {/* DRAFT wording, awaiting Harriet's approval. */}
         <div className="reveal-head">
-          <h2>{first ? 'Revealing your $PROOF' : 'New since your last visit'}</h2>
-          <span className="muted">{Math.min(shown, items.length)} of {items.length}</span>
+          <span className="reveal-tag">{first ? 'See what you got' : 'New since your last visit'}</span>
+          <span className="reveal-tag">{Math.min(shown, items.length)} of {items.length}</span>
         </div>
         <div className="reveal-grid">
-          {items.map((it, i) => {
+          {items.map((x, i) => {
+            const amount = BigInt(x.end) - BigInt(x.start);
             const rarest = i === items.length - 1 && items.length > 1;
-            const card = <div className="strike-mini">{it.node}</div>;
+            const card = (
+              <div className="reveal-square strike-mini">
+                <StrikeCardView strike={x.strike} rank={x.rank} traits={x.traits} part={amount} whole={1_000_000_000_000n} sub={`${fmtTokens(amount)} tokens`} />
+              </div>
+            );
             return (
-              <div key={it.key} className={i < shown ? 'reveal-card in' : 'reveal-card'}>
-                {rarest ? <div className="feature-frame"><div className="feature-inner reveal-inner">{card}</div></div> : card}
+              <div key={x.start} className={`reveal-card${i < shown ? ' in' : ''}${rarest ? ' rarest' : ''}`}>
+                {rarest ? <div className="feature-frame">{card}</div> : card}
               </div>
             );
           })}
         </div>
         <div className="reveal-foot">
-          {!done && <button className="btn btn-ghost" onClick={() => setShown(items.length)}>Skip</button>}
-          <button className="btn btn-primary btn-cycle" disabled={!done} onClick={onDone}>See my wallet</button>
+          {!done && <button className="btn btn-ghost reveal-btn" onClick={() => setShown(items.length)}>Skip</button>}
+          <button className="btn btn-primary" onClick={onDone}>See my wallet</button>
         </div>
       </div>
     </div>
