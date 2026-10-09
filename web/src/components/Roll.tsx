@@ -715,7 +715,8 @@ export function Confetti({ points }: { points: number }) {
         '--delay': `${Math.random() * 0.15}s`,
         '--size': `${4 + Math.round(Math.random() * 4)}px`,
       } as React.CSSProperties,
-      tone: `t${i % 4}`,
+      // Uncommon is all blue, Rare all purple, Legendary uses every rarity colour.
+      tone: t === 3 ? `t${i % 4}` : `t${t}`,
     };
   });
   return <div className="confetti" aria-hidden>{pieces.map((p) => <i key={p.key} className={p.tone} style={p.style} />)}</div>;
