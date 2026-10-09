@@ -1540,3 +1540,6 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 
 /* Reveal pop-ups: the count and a close X together at the top right. */
 .reveal-head-right { display: inline-flex; align-items: center; gap: 14px; }
+
+/* While a roll is being decided, the card shows the Sequents envelope in grey. */
+.roll-square .logo { width: 84px; height: auto; fill: #c8c8c8; }

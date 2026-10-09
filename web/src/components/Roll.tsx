@@ -13,6 +13,7 @@ import { coinCells } from './pixels.tsx';
 import { PixelIcon, rollIconName, shareText } from './TraitIcons.tsx';
 import { FilterMenu } from './FilterMenu.tsx';
 import { PixelTick } from './PixelTick.tsx';
+import { Logo } from './Logo.tsx';
 
 const COIN = coinCells(7, 5, 0);
 
@@ -104,7 +105,7 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
         <div className="reveal-grid">
           <div className={`reveal-card in${result ? ' landed' : ' waiting'}`}>
             <div className={`reveal-square strike-mini roll-square${result ? ` t${t}` : ''}`}>
-              <RollCoin points={result?.points ?? null} name={result?.name} spinning={!result && !err} />
+              {result ? <RollCoin points={result.points} name={result.name} /> : <Logo />}
               {result ? (
                 <>
                   <strong className="strike-title">{result.name}</strong>
@@ -291,7 +292,7 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
                 <div className="reveal-grid">
                   <div className="reveal-card in waiting">
                     <div className="reveal-square strike-mini roll-square">
-                      <RollCoin points={null} spinning />
+                      <Logo />
                       <BrandLoader />
                       <span className="small muted">{shownAt <= 0 ? 'Approve it in your wallet' : 'Striking'}</span>
                     </div>
