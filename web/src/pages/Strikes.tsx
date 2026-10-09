@@ -6,6 +6,7 @@ import { TIER_NAMES, fmtTokens, pct, tier } from '../format.ts';
 import { CurveView, GradientView, MintSheet, SheetLegend } from '../components/MintSheet.tsx';
 import type { Focus } from '../components/MintSheet.tsx';
 import { Bar, ErrorNote, Loading, StrikeCoin, Traits } from '../components/ui.tsx';
+import { RollStats } from '../components/Roll.tsx';
 
 type View = 'curve' | 'sheet' | 'gradient';
 const CURVE_CELL = 10;
@@ -192,6 +193,8 @@ export function Strikes() {
           </nav>
         )}
       </section>
+
+      <RollStats />
 
       <section className="panel">
         <h2>Survival by rarity</h2>

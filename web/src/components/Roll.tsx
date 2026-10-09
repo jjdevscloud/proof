@@ -1,11 +1,12 @@
 // The roll (SPEC §4.5): seal ordinary $PROOF into an envelope, pay a small SOL fee, and the next
 // blocks decide which tier it becomes. The browser computes the result itself from the seed block.
 import { useEffect, useState } from 'react';
-import type { Envelope, WalletView } from '../api.ts';
+import { useApi } from '../api.ts';
+import type { Envelope, Rolls, WalletView } from '../api.ts';
 import type { RollRules } from '../../../indexer/src/derive.ts';
 import { useConfig, useVault } from '../App.tsx';
-import { BASE, TIER_NAMES, fmtTokens, sol, tier } from '../format.ts';
-import { ErrorNote, Modal, runTx } from './ui.tsx';
+import { BASE, TIER_NAMES, explorer, fmtTokens, short, sol, tier } from '../format.ts';
+import { ErrorNote, Loading, Modal, runTx } from './ui.tsx';
 import { coinCells } from './pixels.tsx';
 
 const COIN = coinCells(7, 5, 0);
@@ -213,5 +214,77 @@ export function RollAgain({ e }: { e: Envelope }) {
       )}
       {revealing && <RollReveal signature={revealing} onClose={() => setRevealing(null)} />}
     </>
+  );
+}
+
+// Strikes page: every rolled tier, how often it has come up, how many still exist, and recent rolls.
+export function RollStats() {
+  const config = useConfig();
+  const { data } = useApi<Rolls>(config.roll ? '/rolls?limit=12' : null);
+  const roll = config.roll;
+  if (!roll) return null;
+  const winOdds = roll.tiers.reduce((t, x) => t + x.odds, 0);
+  const rows = [...roll.tiers, { ...roll.fallback, odds: 1_000_000 - winOdds }];
+  const rares = data ? roll.tiers.reduce((t, x) => t + (data.held[x.name]?.count ?? 0), 0) : null;
+  return (
+    <section className="panel">
+      <div className="panel-head panel-head-stack">
+        <h2>Rolled tiers</h2>
+        <p className="muted list-sub">
+          Ordinary $PROOF sealed in an envelope can roll for one of these tiers ({sol(roll.feeLamports)} SOL per roll,{' '}
+          {fmtTokens(roll.minEntry)} minimum). No caps: the counts below grow with every roll and shrink when envelopes are withdrawn.{' '}
+          <a href="#/wallet">Roll yours</a>
+        </p>
+      </div>
+      {data && (
+        <p className="mono small muted">
+          {data.total.toLocaleString()} rolls so far · {rares?.toLocaleString()} rolled rares held in envelopes now
+        </p>
+      )}
+      <div className="table-scroll">
+      <table className="table odds roll-stats">
+        <thead>
+          <tr>
+            <th>Tier</th><th>Rarity</th><th className="num">Chance</th><th className="num">Rolled</th>
+            <th className="num">Exist now</th><th className="num">Listed</th><th className="num">Floor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((t) => {
+            const h = data?.held[t.name];
+            const isFallback = t.name === roll.fallback.name;
+            return (
+              <tr key={t.name}>
+                <td><RollCoin points={t.points} /> {t.name}</td>
+                <td className={`t${tier(t.points)}-text`}>{TIER_NAMES[tier(t.points)]}</td>
+                <td className="num mono">{odds(t.odds)}</td>
+                <td className="num mono">{data ? (data.counts[t.name] ?? 0).toLocaleString() : '…'}</td>
+                <td className="num mono">{data ? (h?.count ?? 0).toLocaleString() : '…'}</td>
+                <td className="num mono">{isFallback ? '—' : data ? (h?.listed ?? 0) : '…'}</td>
+                <td className="num mono">{h?.floor ? <a href="#/desk">{sol(h.floor)} SOL</a> : '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      </div>
+      <h3 className="roll-recent-head">Latest rolls</h3>
+      {!data ? <Loading /> : !data.recent.length ? (
+        <p className="muted small">No rolls yet.</p>
+      ) : (
+        <ul className="feed">
+          {data.recent.map((r) => (
+            <li key={r.signature} className={r.points > 0 ? 'feed-issue' : 'feed-melt'}>
+              <span className="feed-icon" aria-hidden><RollCoin points={r.points} /></span>
+              <span className="feed-text">
+                <a href={`#/wallet/${r.holder}`}>{short(r.holder)}</a> rolled <strong>{r.name}</strong>
+                {r.points > 0 && <span className="muted"> · {TIER_NAMES[tier(r.points)]}</span>}
+              </span>
+              <a className="feed-link mono small" href={explorer('tx', r.signature)} target="_blank" rel="noreferrer">slot {r.slot}</a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

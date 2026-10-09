@@ -79,6 +79,7 @@ export type Change =
 export type Rolls = {
   total: number;
   counts: Record<string, number>;
+  held: Record<string, { count: number; listed: number; floor: string | null }>;
   recent: { slot: number; signature: string; envelope: string; holder: string; name: string; points: number }[];
 };
 

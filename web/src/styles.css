@@ -2433,3 +2433,18 @@ textarea {
 .roll-panel .origin-actions {
   margin-top: 10px;
 }
+.roll-stats td,
+.roll-stats th {
+  white-space: nowrap;
+}
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.roll-recent-head {
+  margin: 28px 0 8px;
+}
+.feed-icon .roll-coin {
+  --size: 16px;
+  margin: 0;
+}

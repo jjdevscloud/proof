@@ -162,7 +162,18 @@ export function createApi(state: ApiState): { server: Server; broadcast: (c: TxC
           const counts: Record<string, number> = {};
           for (const r of rolled) counts[(r as any).name] = (counts[(r as any).name] ?? 0) + 1;
           const limit = Math.min(Number(url.searchParams.get('limit') ?? 30) || 30, 200);
-          return send(200, { total: rolled.length, counts, recent: rolled.slice(-limit).reverse() });
+          // Envelopes carrying each result now (withdrawn ones are gone), listings and the cheapest.
+          const held: Record<string, { count: number; listed: number; floor: bigint | null }> = {};
+          for (const e of l.envelopes.values()) {
+            if (!e.roll) continue;
+            const h = (held[e.roll.name] ??= { count: 0, listed: 0, floor: null });
+            h.count++;
+            if (e.status === 'listed') {
+              h.listed++;
+              if (h.floor === null || e.price < h.floor) h.floor = e.price;
+            }
+          }
+          return send(200, { total: rolled.length, counts, held, recent: rolled.slice(-limit).reverse() });
         }
         case 'stream':
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });

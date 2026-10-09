@@ -135,6 +135,11 @@ activity.unshift(
 const rolls: Rolls = {
   total: 412,
   counts: { Coal: 361, Assay: 17, 'Mint Run': 12, Reissue: 8, Recoinage: 6, 'Second Strike': 4, Restrike: 2, Overstrike: 1, Pattern: 1 },
+  held: {
+    Coal: { count: 140, listed: 0, floor: null }, Assay: { count: 15, listed: 4, floor: '180000000' }, 'Mint Run': { count: 11, listed: 2, floor: '650000000' },
+    Reissue: { count: 8, listed: 1, floor: '900000000' }, Recoinage: { count: 5, listed: 0, floor: null }, 'Second Strike': { count: 4, listed: 1, floor: '1600000000' },
+    Restrike: { count: 2, listed: 0, floor: null }, Overstrike: { count: 1, listed: 0, floor: null }, Pattern: { count: 1, listed: 1, floor: '4200000000' },
+  },
   recent: [
     { slot: 453_700_200, signature: addr(980), envelope: addr(151), holder: addr(351), name: 'Pattern', points: 85 },
     { slot: 453_700_150, signature: addr(981), envelope: addr(150), holder: DEMO_WALLET, name: 'Coal', points: 0 },
