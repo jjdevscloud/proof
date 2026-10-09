@@ -5,7 +5,7 @@ import type { Stats, StrikeRow } from '../api.ts';
 import { TIER_NAMES, fmtTokens, pct, tier } from '../format.ts';
 import { MintSheet, SheetLegend } from '../components/MintSheet.tsx';
 import type { KeyFocus } from '../components/MintSheet.tsx';
-import { Bar, ErrorNote, Loading, StrikeCoin, Traits } from '../components/ui.tsx';
+import { Bar, ErrorNote, Loading, StrikeCardView, StrikeCoin, Traits } from '../components/ui.tsx';
 import { BitmapCurve, GradientView } from '../components/StrikesLab.tsx';
 import { TraitIcon, shareText, traitShare } from '../components/TraitIcons.tsx';
 import { FilterMenu } from '../components/FilterMenu.tsx';
@@ -124,8 +124,9 @@ export function Strikes() {
             else if (num) location.hash = `#/strike/${Number(num)}`;
           }}
         >
-          <input placeholder="Search by Strike number" value={jump} onChange={(e) => { setJump(e.target.value); setPage(0); }} inputMode="numeric" aria-label="Strike number" />
-          <FilterMenu label="Trait" options={TRAIT_NAMES.map((n) => ({ value: n, label: n, mark: <TraitIcon trait={n} />, note: traitShare(n), sep: n === 'Double Die', heading: n === 'Genesis' ? 'Date, set by when it was bought' : n === 'Double Die' ? 'Error, assigned at the reveal' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
+          <input placeholder="Search any of the 794 Strikes, #0 to #793" value={jump} onChange={(e) => { setJump(e.target.value); setPage(0); }} inputMode="numeric" aria-label="Strike number" />
+          <FilterMenu label="Trait" options={TRAIT_NAMES.map((n) => ({ value: n, label: n, mark: <TraitIcon trait={n} />, note: traitShare(n), sep: n === 'Double Die', heading: n === 'Genesis' ? 'Date' : n === 'Double Die' ? 'Error' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
+          <FilterMenu label="Rarity" options={[0, 1, 2, 3].map((t) => ({ value: t, label: TIER_NAMES[t], mark: <i className={`tier-dot t${t}`} />, note: tierShare(t) }))} chosen={tiers} onToggle={(v) => toggle(tiers, setTiers, v)} />
           <FilterMenu label="Status" options={STATUS_NAMES.map(([k, n]) => ({ value: k, label: n }))} chosen={statuses} onToggle={(v) => toggle(statuses, setStatuses, v)} />
           <button className="btn btn-primary">Search</button>
         </form>
@@ -144,24 +145,11 @@ export function Strikes() {
             <p className="muted list-sub">Matching your search, rarest first.</p>
           </div>
         {data && !notable.length && <p className="muted">{searching ? 'No Strikes match.' : 'Nothing here yet.'}</p>}
-        {searching && <ul className="strike-list">
-          {pageRows.map((s) => {
-            const survivalPct = pct(s.surviving, s.issued);
-            return (
-              <li key={s.strike}>
-                <StrikeCoin strike={s.strike} rank={s.rank} part={s.surviving} whole={s.issued} />
-                <div className="strike-list-main">
-                  <a href={`#/strike/${s.strike}`} className="strike-title">Strike #{s.strike}</a>
-                  <Traits traits={s.traits} rank={s.rank} />
-                </div>
-                <div className="strike-list-bar">
-                  <Bar value={survivalPct} tierClass={`t${tier(s.rank)}`} />
-                  <span className="mono small muted">{fmtTokens(s.surviving)} surviving</span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>}
+        {searching && (
+          <ul className="strike-feature">
+            {pageRows.map((s) => <li key={s.strike}><StrikeCard s={s} /></li>)}
+          </ul>
+        )}
         {searching && pages > 1 && (
           <nav className="pager" aria-label="Pages">
             <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>← Previous</button>
@@ -187,13 +175,7 @@ export function Strikes() {
             </div>
             <ul className="strike-feature">
               {top5.map((s) => (
-                <li key={s.strike} className={`t${tier(s.rank)}`}>
-                  <StrikeCoin strike={s.strike} rank={s.rank} part={s.surviving} whole={s.issued} />
-                  <a href={`#/strike/${s.strike}`} className="strike-title">Strike #{s.strike}</a>
-                  <span className="feature-tier">{TIER_NAMES[tier(s.rank)]}</span>
-                  <Traits traits={s.traits} rank={s.rank} />
-                  <span className="mono small muted">{pct(s.surviving, s.issued)}% surviving</span>
-                </li>
+                <li key={s.strike}><StrikeCard s={s} /></li>
               ))}
             </ul>
           </div>
@@ -267,3 +249,8 @@ export function Strikes() {
   );
 }
 
+
+// One Strike as a card: the shared Strike card, with how much survives as its grey line.
+function StrikeCard({ s }: { s: StrikeRow }) {
+  return <StrikeCardView strike={s.strike} rank={s.rank} traits={s.traits} part={s.surviving} whole={s.issued} sub={BigInt(s.issued) === 0n ? 'Not yet bought' : `${pct(s.surviving, s.issued)}% surviving`} />;
+}

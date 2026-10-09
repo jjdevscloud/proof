@@ -26,7 +26,7 @@ export function StrikePage({ n }: { n: number }) {
     <>
       <nav className="crumbs small"><a className="back-link" href="#/strikes">← Back to Strikes</a></nav>
       <section className="strike-hero panel">
-        <StrikeCoin strike={n} rank={data.rank} size="lg" part={data.surviving} whole={data.issued} />
+        <StrikeCoin strike={n} rank={data.rank} size="lg" part={data.surviving} whole={data.issued} traits={data.traits} />
         {/* A profile: the name with its trait tags (symbol and name) under it, then plain labelled details. */}
         <div className="profile">
           <div className="profile-name">
@@ -34,7 +34,7 @@ export function StrikePage({ n }: { n: number }) {
             <Traits traits={data.traits} rank={data.rank} share />
           </div>
           <dl className="profile-details">
-            <dt>Rarity</dt><dd>{TIER_NAMES[tier(data.rank)]}{(() => {
+            <dt>Rarity</dt><dd><i className={`tier-dot t${tier(data.rank)}`} /> {TIER_NAMES[tier(data.rank)]}{(() => {
               const by = stats.data?.byRank ?? [];
               const all = by.reduce((a, r) => a + r.strikes, 0);
               const same = by.filter((r) => tier(r.rank) === tier(data.rank)).reduce((a, r) => a + r.strikes, 0);

@@ -1,79 +1,125 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, useApi } from '../api.ts';
 import type { Envelope, Preview, Segment, WalletView } from '../api.ts';
 import { useConfig, useVault } from '../App.tsx';
 import { isAddress, useWallet } from '../chain.ts';
-import { BASE, CLUSTER, feeOf, feePct, fmtTokens, lamportsFromSol, short, sol } from '../format.ts';
-import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCoin, Traits, TypedConfirm, runTx } from '../components/ui.tsx';
-import { RollAgain, RollBadge, RollPanel } from '../components/Roll.tsx';
+import { BASE, CLUSTER, TIER_NAMES, feeOf, feePct, fmtTokens, lamportsFromSol, short, sol, tier } from '../format.ts';
+import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCardView, StrikeCoin, Traits, TypedConfirm, runTx } from '../components/ui.tsx';
+import { RollAgain, RollPanel } from '../components/Roll.tsx';
+import { EnvelopeDetails, EnvelopePic } from './Desk.tsx';
 
 export function WalletPage({ address: routeAddress }: { address: string | null }) {
   const wallet = useWallet();
   const address = routeAddress ?? wallet.address;
   const [input, setInput] = useState('');
+  const [tab, setTab] = useState<'rare' | 'envelopes' | 'roll'>('rare');
   const valid = !!address && isAddress(address);
   const { data, error } = useApi<WalletView>(valid ? `/wallet/${address}` : null);
   const own = !!address && address === wallet.address;
+  // Ordinary $PROOF in your main account, for the tally at the top: the account balance less its rare
+  // tokens (read only, the same reading the Roll tab uses).
+  const vault = useVault();
+  const [main, setMain] = useState<{ account: string; balance: bigint } | null>(null);
+  useEffect(() => {
+    if (!own || !address) return;
+    let live = true;
+    vault.mainTokenAccount(address).then((m) => live && setMain(m)).catch(() => live && setMain(null));
+    return () => {
+      live = false;
+    };
+  }, [vault, own, address, data]);
 
   if (!address && wallet.restoring) return <Loading what="Reconnecting your wallet" />;
   if (!address) {
     return (
-      <div className="panel narrow">
-        <h1>Your rare tokens</h1>
-        <p className="muted">Connect your wallet to see and manage your rare $PROOF, or look up any address.</p>
-        <button className="btn btn-primary" onClick={() => wallet.connect().catch(() => {})} disabled={!wallet.available}>
-          {wallet.available ? 'Connect wallet' : 'No wallet detected'}
-        </button>
-        <form className="inline-form" onSubmit={(e) => { e.preventDefault(); if (isAddress(input.trim())) location.hash = `#/wallet/${input.trim()}`; }}>
-          <input placeholder="Or paste a wallet address" value={input} onChange={(e) => setInput(e.target.value)} aria-label="Wallet address" />
-          <button className="btn btn-ghost">Look up</button>
-        </form>
-      </div>
+      <>
+        <div className="page-head">
+          <div>
+            <h1>My wallet</h1>
+            {/* DRAFT line, awaiting Harriet's approval. */}
+            <p className="muted page-sub">Connect your wallet to see and manage your rare $PROOF, or look up any wallet.</p>
+          </div>
+        </div>
+        <section className="strike-search top-search">
+          <form className="search-row" onSubmit={(e) => { e.preventDefault(); if (isAddress(input.trim())) location.hash = `#/wallet/${input.trim()}`; }}>
+            <input placeholder="Paste a wallet address" value={input} onChange={(e) => setInput(e.target.value)} aria-label="Wallet address" />
+            <button className="btn btn-primary">Look up</button>
+          </form>
+        </section>
+        <section className="panel wallet-connect">
+          <h2>Connect your wallet</h2>
+          <p className="muted list-sub">See the rare tokens you bought on the curve, seal them, list them on the desk, or roll ordinary $PROOF.</p>
+          <button className="btn btn-primary btn-cycle" onClick={() => wallet.connect().catch(() => {})} disabled={!wallet.available}>
+            {wallet.available ? 'Connect wallet' : 'No wallet detected'}
+          </button>
+        </section>
+      </>
     );
   }
   if (!valid) return <ErrorNote error="That doesn't look like a Solana address." />;
 
   const segmentsTotal = (data?.accounts ?? []).reduce((n, a) => n + a.segments.length, 0);
 
+  const mainRare = data?.accounts.find((a) => a.account === main?.account)?.segments.reduce((t, x) => t + BigInt(x.end) - BigInt(x.start), 0n) ?? 0n;
+  const ordinaryTokens = main ? (main.balance > mainRare ? main.balance - mainRare : 0n) : 0n;
+  const rareTokens = (data?.accounts ?? []).reduce((n, a) => n + a.segments.reduce((t, x) => t + BigInt(x.end) - BigInt(x.start), 0n), 0n);
   return (
     <>
       <div className="page-head">
         <div>
           <h1>{own ? 'My wallet' : 'Wallet'}</h1>
-          <p className="mono small muted"><Addr value={address} /> {own && <span className="pill">connected</span>}</p>
+          {/* DRAFT line, awaiting Harriet's approval. */}
+          <p className="muted page-sub"><Addr value={address} />{own ? ' is currently connected.' : '.'} Rare tokens from the curve and sealed envelopes.</p>
         </div>
+        {data && (
+          <div className="roll-stat-box">
+            {own && <div><strong>{main ? fmtTokens(ordinaryTokens) : '…'}</strong><span className="muted">Ordinary $PROOF</span></div>}
+            <div><strong>{fmtTokens(rareTokens)}</strong><span className="muted">Rare tokens</span></div>
+            <div><strong>{data.envelopes.length}</strong><span className="muted">Envelopes</span></div>
+          </div>
+        )}
+      </div>
+      <div className="tabs" role="tablist" aria-label="Wallet">
+        {(own ? (['rare', 'envelopes', 'roll'] as const) : (['rare', 'envelopes'] as const)).map((v) => (
+          <button key={v} role="tab" aria-selected={tab === v} className={`${tab === v ? 'tab on' : 'tab'}${v === 'roll' ? (tab === v ? ' tab-roll' : ' tab-roll-idle') : ''}`} onClick={() => setTab(v)}>
+            {v === 'rare' ? `Rare tokens (${segmentsTotal})` : v === 'envelopes' ? `Envelopes (${data?.envelopes.length ?? 0})` : 'Roll'}
+          </button>
+        ))}
       </div>
       {own && CLUSTER === 'devnet' && <DevnetTokens address={address} />}
       {error && <ErrorNote error={error} />}
       {!data && !error && <Loading />}
       {data && (
         <>
-          {own && <RollPanel owner={address} data={data} />}
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Rare tokens in origin accounts</h2>
-              <span className="muted small">{segmentsTotal ? 'Safe while they stay put' : ''}</span>
+          {tab === 'roll' && own && <RollPanel owner={address} data={data} />}
+          {tab === 'rare' && <section className="panel tabbed">
+            {/* Like the Strikes chart tab: the tab names it, a grey line top left says what it is. DRAFT line. */}
+            <div className="view-head">
+              <p className="muted view-line">Rare tokens stay rare while they stay in the account that bought them. Select Strikes to seal them into an envelope.</p>
             </div>
             {!data.accounts.length ? (
               <p className="muted">
                 {own ? 'You hold no rare $PROOF outside envelopes. ' : 'No rare $PROOF here. '}
-                Rarity only exists in the account that bought it off the curve — tokens bought on Jupiter or received from others are ordinary.
+                Rarity only exists in the account that bought it off the curve. Tokens bought after the curve or received from others are ordinary.
               </p>
             ) : (
               data.accounts.map((a) => <OriginAccount key={a.account} owner={address} account={a.account} common={a.common} segments={a.segments} own={own} />)
             )}
-          </section>
+          </section>}
 
-          <section className="panel">
-            <h2>Envelopes</h2>
+          {tab === 'envelopes' && <section className="panel tabbed">
+            <div className="view-head">
+              {/* DRAFT line, awaiting Harriet's approval. */}
+              <p className="muted view-line">Sealed tokens that can be listed, gifted or rolled without melting.</p>
+            </div>
             {!data.envelopes.length ? (
               <p className="muted">{own ? 'Seal rare tokens into an envelope to sell or gift them without melting.' : 'No envelopes.'}</p>
             ) : (
-              <div className="cards">
+              <div className="cards wallet-envelopes">
                 {data.envelopes.map((e) => <EnvelopeCard key={e.address} envelope={e} own={own} />)}
               </div>
             )}
-          </section>
+          </section>}
         </>
       )}
     </>
@@ -94,25 +140,39 @@ function OriginAccount({ owner, account, common, segments, own }: { owner: strin
 
   return (
     <div className="origin">
-      <div className="origin-head small muted">
-        Token account <Addr value={account} />
-        {BigInt(common) > 0n && <> · plus {fmtTokens(common)} ordinary $PROOF (these leave first)</>}
+      {/* Which token account (the "pocket" your wallet keeps $PROOF in) holds these Strikes, small at the top right,
+          with an info icon that explains it. DRAFT wording, awaiting Harriet's approval. */}
+      <div className="origin-head">
+        <span className="origin-acct">
+          <span className="muted">Token account</span> <Addr value={account} />
+          <AccountInfo common={common} />
+        </span>
       </div>
-      <ul className="segments selectable">
-        {segments.map((s) => (
-          <li key={s.start} className={selected.has(s.start) ? 'selected' : ''}>
-            {own && (
-              <input type="checkbox" checked={selected.has(s.start)} onChange={() => toggle(s.start)} aria-label={`Select Strike #${s.strike}`} />
-            )}
-            <StrikeCoin strike={s.strike} rank={s.rank} size="sm" part={BigInt(s.end) - BigInt(s.start)} whole={1_000_000_000_000n} />
-            <div className="seg-main">
-              <Traits traits={s.traits} rank={s.rank} />
-              <span className="mono small muted">#{(BigInt(s.start) / BASE).toLocaleString()} – #{((BigInt(s.end) - 1n) / BASE).toLocaleString()}</span>
-            </div>
-            <span className="mono seg-amt">{fmtTokens(BigInt(s.end) - BigInt(s.start))}</span>
-          </li>
-        ))}
-      </ul>
+      {/* Each Strike as its own card, like the envelopes: picture top left, number and rarity, then the traits,
+          range and amount. Your own: click a card (or its tick box) to select it for sealing. */}
+      <div className="cards wallet-envelopes token-cards">
+        {segments.map((s) => {
+          const amount = BigInt(s.end) - BigInt(s.start);
+          const on = selected.has(s.start);
+          return (
+            <article
+              key={s.start}
+              className={`card post token-card${on ? ' selected' : ''}${own ? ' selectable' : ''}`}
+              onClick={own ? (ev) => { if (!(ev.target as Element).closest('a, input')) toggle(s.start); } : undefined}
+            >
+              <StrikeCardView
+                strike={s.strike}
+                rank={s.rank}
+                traits={s.traits}
+                part={amount}
+                whole={1_000_000_000_000n}
+                sub={`${fmtTokens(amount)} tokens`}
+                extra={own && <input type="checkbox" checked={on} onChange={() => toggle(s.start)} aria-label={`Select Strike #${s.strike}`} />}
+              />
+            </article>
+          );
+        })}
+      </div>
       {own && (
         <div className="origin-actions">
           <button className="btn btn-primary" disabled={!chosen.length} onClick={() => setSealing(true)}>
@@ -146,7 +206,29 @@ function OriginAccount({ owner, account, common, segments, own }: { owner: strin
   );
 }
 
-// "If I sell or send N tokens from this account, what melts?"
+// The i beside a token account. Hover or focus shows a small black label, like the coin labels on the Rules
+// page: what a token account is, and the ordinary $PROOF it also holds. DRAFT wording.
+function AccountInfo({ common }: { common: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="info-wrap" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <span className="info-dot" tabIndex={0} onFocus={() => setShow(true)} onBlur={() => setShow(false)} aria-label="What is a token account?">i</span>
+      {show && (
+        <span className="hover-tip info-tip" role="tooltip">
+          <span className="tip-body">
+            <strong>Token account</strong>
+            <span>Where your wallet keeps $PROOF. Rarity stays in the token account that bought it off the curve.</span>
+            {BigInt(common) > 0n && <span>Also holds {fmtTokens(common)} ordinary $PROOF, which leave first.</span>}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+// "If I sell or send N tokens from this account, what melts?" Under each account, beside Seal. A click turns
+// the button into a small search bar in the same place; the answer shows in a box under the account, in
+// two columns. The check itself is unchanged: it asks the indexer's /preview.
 function SellPreview({ account }: { account: string }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
@@ -167,27 +249,34 @@ function SellPreview({ account }: { account: string }) {
 
   if (!open) return <button className="btn btn-ghost" onClick={() => setOpen(true)}>What melts if I sell?</button>;
   return (
-    <div className="preview">
-      <form className="inline-form" onSubmit={(e) => { e.preventDefault(); run(); }}>
-        <input placeholder="Tokens to sell or send" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount" />
-        <button className="btn btn-ghost">Preview</button>
+    <>
+      <form className="search-row melt-bar" onSubmit={(e) => { e.preventDefault(); run(); }}>
+        <input placeholder="Tokens to sell or send" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount" autoFocus />
+        <button className="btn btn-primary">Check</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { setOpen(false); setRes(null); setErr(null); }} aria-label="Close">Close</button>
       </form>
-      {err && <ErrorNote error={err} />}
+      {err && <div className="melt-box"><ErrorNote error={err} /></div>}
       {res && (
-        <div className="small">
-          <p>{fmtTokens(res.fromMelted)} ordinary tokens leave first.</p>
-          {res.segments.length ? (
-            <>
-              <p className="melt-word">Then these rare tokens would melt:</p>
-              <SegmentList segments={res.segments} />
-              <p className="muted">To sell rare tokens without melting them, seal them and list the envelope on the desk.</p>
-            </>
-          ) : (
-            <p className="ok-word">No rare tokens would melt.</p>
-          )}
+        <div className="melt-box melt-result">
+          <div>
+            <span className="muted">Leaves first</span>
+            <strong>{fmtTokens(res.fromMelted)}</strong>
+            <span className="muted">ordinary tokens</span>
+          </div>
+          <div>
+            {res.segments.length ? (
+              <>
+                <span className="melt-word">Then these rare tokens would melt</span>
+                <SegmentList segments={res.segments} />
+                <span className="muted">To sell rare tokens without melting them, seal them and list the envelope on the desk.</span>
+              </>
+            ) : (
+              <span className="ok-word">No rare tokens would melt.</span>
+            )}
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -204,14 +293,10 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
   };
 
   return (
-    <article className="card">
-      <div className="card-head">
-        <span className="pill pill-seal">Envelope {short(e.address)}</span>
-        {e.status === 'listed' ? <span className="price">{sol(e.price)} <small>SOL</small></span> : <span className="pill">Sealed</span>}
-      </div>
-      <RollBadge e={e} />
-      <SegmentList segments={e.segments} empty={e.roll || e.rolling ? 'Ordinary $PROOF, rolled.' : 'No rare Strikes: the contents are ordinary $PROOF.'} />
-      {BigInt(e.common) > 0n && <p className="small muted">+ {fmtTokens(e.common)} ordinary $PROOF</p>}
+    <article className="card post wallet-env">
+      {/* The same card as on the desk: the envelope picture top left, its status and price, then what is inside. */}
+      <EnvelopeHead e={e} />
+      <EnvelopeDetails envelope={e} showAddress={false} />
       {own && (
         <div className="card-foot">
           {e.status === 'listed' ? (
@@ -229,23 +314,27 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
 
       {mode === 'list' && (
         <Modal title="List on the collector desk" onClose={close}>
-          <SegmentList segments={e.segments} />
+          <div className="post buy-post"><EnvelopeHead e={e} /><EnvelopeDetails envelope={e} showAddress={false} /></div>
           <label className="field">
             Price in SOL
             <input value={price} onChange={(x) => setPrice(x.target.value)} inputMode="decimal" placeholder="e.g. 1.5" autoFocus />
           </label>
-          <p className="small muted">
-            The envelope stays in the vault. A buyer pays the price and becomes the holder in the same transaction; you receive
-            the price minus the {feePct(config.feeBps)} Sequents desk fee
-            {(() => {
-              try {
-                const l = lamportsFromSol(price);
-                return l > 0n ? <> — <strong>{sol(l - feeOf(l, config.feeBps))} SOL</strong></> : null;
-              } catch {
-                return null;
-              }
-            })()}.
-          </p>
+          {/* The same facts as before, as a labelled list like the buy pop-up. DRAFT wording. */}
+          <dl className="post-details buy-terms">
+            <dt>You get</dt>
+            <dd>
+              {(() => {
+                try {
+                  const l = lamportsFromSol(price);
+                  return l > 0n ? <strong>{sol(l - feeOf(l, config.feeBps))} SOL</strong> : 'The price';
+                } catch {
+                  return 'The price';
+                }
+              })()}
+              , after the {feePct(config.feeBps)} Sequents desk fee
+            </dd>
+            <dt>How</dt><dd className="muted">The envelope stays in the vault. A buyer pays and becomes the holder in one transaction.</dd>
+          </dl>
           {err && <ErrorNote error={err} />}
           <button
             className="btn btn-primary wide"
@@ -266,6 +355,7 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
 
       {mode === 'gift' && (
         <Modal title="Gift this envelope" onClose={close}>
+          <div className="post buy-post"><EnvelopeHead e={e} /><EnvelopeDetails envelope={e} showAddress={false} /></div>
           <label className="field">
             Recipient wallet address
             <input value={to} onChange={(x) => setTo(x.target.value.trim())} placeholder="Solana address" autoFocus spellCheck={false} />
@@ -286,10 +376,10 @@ function EnvelopeCard({ envelope: e, own }: { envelope: Envelope; own: boolean }
       {mode === 'withdraw' && (
         <Modal title="Withdraw and melt" onClose={close}>
           <p className="melt-banner">
-            Withdrawing sends the tokens back to your wallet as <strong>ordinary $PROOF</strong>. Their rarity is destroyed permanently —
-            no one can ever restore it.
+            Withdrawing sends the tokens back to your wallet as <strong>ordinary $PROOF</strong>. Their rarity is destroyed permanently.
+            No one can ever restore it.
           </p>
-          <SegmentList segments={e.segments} />
+          <div className="post buy-post"><EnvelopeHead e={e} /><EnvelopeDetails envelope={e} showAddress={false} /></div>
           <TypedConfirm word="MELT" label="Withdraw and melt forever" onConfirm={async () => {
             if (await runTx('Withdraw', () => vault.withdraw(e.holder, e.address, e.vault))) close();
           }} />
@@ -324,5 +414,20 @@ function DevnetTokens({ address }: { address: string }) {
         <button className="btn btn-ghost" disabled={busy} onClick={() => buy(2_500_000n)}>Get 2,500,000</button>
       </div>
     </section>
+  );
+}
+
+// An envelope's header, the same in its card and in its pop-ups: the large envelope picture top left, its name
+// and status beside it, the price top right when listed.
+function EnvelopeHead({ e }: { e: Envelope }) {
+  return (
+    <header className="post-head">
+      <EnvelopePic envelope={e} />
+      <span className="post-who">
+        <strong>Envelope {short(e.address)}</strong>
+        <span className="small muted">{e.status === 'listed' ? 'Listed on the desk' : 'Sealed'}</span>
+      </span>
+      {e.status === 'listed' && <span className="price">{sol(e.price)} <small>SOL</small></span>}
+    </header>
   );
 }

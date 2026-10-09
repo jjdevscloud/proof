@@ -107,3 +107,12 @@ const ROLL_ICONS: Record<string, string> = {
   'Second Strike': 'secondstrike', 'Recoinage': 'recoinage', 'Reissue': 'reissue', 'Mint Run': 'mintrun', 'Assay': 'assay', 'Coal': 'coal',
 };
 export const rollIconName = (name: string | undefined) => (name ? ROLL_ICONS[name] : undefined);
+
+// A Strike's headline trait for its picture: its error if it has one (errors are worth the most), otherwise its
+// date. Returns the icon name, or undefined when there is nothing to show yet.
+const ERROR_TRAITS = new Set(['Double Die', 'Wrong Planchet', 'Off Center', 'Off-Center', 'Clipped Planchet', 'Die Crack']);
+export function headlineIcon(traits: string[] | null | undefined): string | undefined {
+  if (!traits?.length) return undefined;
+  const pick = traits.find((t) => ERROR_TRAITS.has(t)) ?? traits[0];
+  return BY_NAME[pick]?.[0];
+}

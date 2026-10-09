@@ -37,7 +37,13 @@ export function RollBadge({ e }: { e: Pick<Envelope, 'roll' | 'rolling'> }) {
   if (e.rolling) return <span className="pill roll-badge roll-pending">Rolling…</span>;
   if (!e.roll) return null;
   const t = tier(e.roll.points);
-  return <span className={`pill roll-badge t${t}`}><RollCoin points={e.roll.points} name={e.roll.name} />{e.roll.name} · {TIER_NAMES[t]}</span>;
+  // The same parts as everywhere else: the tier's symbol and name, then its rarity as a dot and word.
+  return (
+    <span className={`roll-badge-row t${t}`}>
+      <RollCoin points={e.roll.points} name={e.roll.name} /><strong>{e.roll.name}</strong>
+      <span className="rarity-tag"><i className={`tier-dot t${t}`} />{TIER_NAMES[t]}</span>
+    </span>
+  );
 }
 
 export function OddsTable({ roll }: { roll: RollRules }) {
@@ -143,29 +149,31 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
   })();
   const chosen = parsed ?? ordinary;
 
+  // The roll, in the frame with the colour cycling border like the 5 rarest Strikes, so it feels like a game.
+  // The pop-ups sit outside the frame so they always open above the page.
   return (
-    <section className="panel roll-panel">
-      <div className="panel-head">
-        <h2>Roll an envelope</h2>
-        <span className="muted small">{sol(roll.feeLamports)} SOL per roll</span>
+    <>
+    <section className="feature-frame roll-feature">
+    <div className="feature-inner">
+      {/* Same title and grey line as the other wallet tabs. The wording is the developer's, cut to two lines. */}
+      <div className="view-head">
+        <p className="muted view-line">
+          Seal at least {fmtTokens(min)} ordinary $PROOF into an envelope and roll it for {sol(roll.feeLamports)} SOL. The next Solana
+          block decides the tier. You keep the tokens, and withdrawing them melts the tier.
+        </p>
       </div>
-      <p className="small">
-        Seal at least {fmtTokens(min)} ordinary $PROOF into an envelope and roll it. The next Solana block decides whether it
-        becomes one of {roll.tiers.length} rare tiers, from {roll.tiers[roll.tiers.length - 1].name} up to {roll.tiers[0].name}, or {roll.fallback.name}.
-        You keep the tokens: withdraw them any time (that melts a rolled tier back to ordinary).
-      </p>
-      <p className="mono small muted">
-        Ordinary $PROOF in your main account: {main ? fmtTokens(ordinary) : '…'}
-      </p>
+      {/* How much can be rolled, large, like the numbers at the top of the page. DRAFT label. */}
+      <div className="roll-ready">
+        <strong>{main ? fmtTokens(ordinary) : '…'}</strong>
+        <span className="muted">Ordinary $PROOF ready to roll</span>
+      </div>
       <div className="origin-actions">
         <button className="btn btn-primary" disabled={!main || ordinary < min} onClick={() => { setAmount((ordinary / BASE).toString()); setOpen(true); }}>
           {main && ordinary < min ? `Needs ${fmtTokens(min)} ordinary $PROOF` : 'Seal & roll'}
         </button>
       </div>
-      <details className="more-odds">
-        <summary className="small">Odds</summary>
-        <OddsTable roll={roll} />
-      </details>
+    </div>
+    </section>
 
       {open && (
         <Modal title="Seal & roll" onClose={() => { setOpen(false); setErr(null); }}>
@@ -209,7 +217,7 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
         </Modal>
       )}
       {revealing && <RollReveal signature={revealing} onClose={() => setRevealing(null)} />}
-    </section>
+    </>
   );
 }
 
@@ -242,7 +250,7 @@ export function RollAgain({ e }: { e: Envelope }) {
 // other page titles, and only the data inside (the Rolls page).
 export function RollStats({ title = 'Rolled tiers', pageHead = false }: { title?: string; pageHead?: boolean } = {}) {
   const config = useConfig();
-  const { data } = useApi<Rolls>(config.roll ? '/rolls?limit=12' : null);
+  const { data } = useApi<Rolls>(config.roll ? '/rolls?limit=200' : null);
   const roll = config.roll;
   const box = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
@@ -250,6 +258,7 @@ export function RollStats({ title = 'Rolled tiers', pageHead = false }: { title?
   // The Rolls page search: a tier name or a wallet, and a rarity filter. It narrows the table and the latest rolls.
   const [q, setQ] = useState('');
   const [bands, setBands] = useState<number[]>([]);
+  const [names, setNames] = useState<string[]>([]);
   // The key: hovering a rarity picks out its columns in the chart and its rows in the table; a click keeps it.
   const [hover, setHover] = useState<number | null>(null);
   const [pin, setPin] = useState<number | null>(null);
@@ -265,9 +274,10 @@ export function RollStats({ title = 'Rolled tiers', pageHead = false }: { title?
   const winOdds = roll.tiers.reduce((t, x) => t + x.odds, 0);
   const allRows = [...roll.tiers, { ...roll.fallback, odds: 1_000_000 - winOdds }];
   const query = q.trim().toLowerCase();
-  const bandOk = (points: number) => !bands.length || bands.includes(tier(points));
-  const rows = allRows.filter((t) => bandOk(t.points) && (!query || t.name.toLowerCase().includes(query) || TIER_NAMES[tier(t.points)].toLowerCase().includes(query)));
-  const recentRows = (data?.recent ?? []).filter((r) => bandOk(r.points) && (!query || r.name.toLowerCase().includes(query) || r.holder.toLowerCase().startsWith(query)));
+  const bandOk = (points: number, name?: string) => (!bands.length || bands.includes(tier(points))) && (!names.length || (name !== undefined && names.includes(name)));
+  const rows = allRows.filter((t) => bandOk(t.points, t.name) && (!query || t.name.toLowerCase().includes(query) || TIER_NAMES[tier(t.points)].toLowerCase().includes(query)));
+  const searching = !!query || bands.length > 0 || names.length > 0;
+  const recentRows = (data?.recent ?? []).filter((r) => bandOk(r.points, r.name) && (!query || r.name.toLowerCase().includes(query) || r.holder.toLowerCase().startsWith(query)));
   const rares = data ? roll.tiers.reduce((t, x) => t + (data.held[x.name]?.count ?? 0), 0) : null;
   const line = (
     <>
@@ -301,7 +311,7 @@ export function RollStats({ title = 'Rolled tiers', pageHead = false }: { title?
           return (
             <tr key={t.name} data-band={tier(t.points)}>
               <td><RollCoin points={t.points} name={t.name} /> {t.name}</td>
-              <td className={`t${tier(t.points)}-text`}>{TIER_NAMES[tier(t.points)]}</td>
+              <td><span className="sv-name"><i className={`tier-dot t${tier(t.points)}`} />{TIER_NAMES[tier(t.points)]}</span></td>
               <td className="num mono">{odds(t.odds)}</td>
               <td className="num mono">{data ? (data.counts[t.name] ?? 0).toLocaleString() : '…'}</td>
               <td className="num mono">{data ? (h?.count ?? 0).toLocaleString() : '…'}</td>
@@ -369,42 +379,75 @@ export function RollStats({ title = 'Rolled tiers', pageHead = false }: { title?
               if (isAddress(q.trim())) location.hash = `#/wallet/${q.trim()}`;
             }}
           >
-            <input placeholder="Search by tier or wallet" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Tier or wallet" />
-            <FilterMenu label="Rarity" options={TIER_NAMES.map((n, i) => ({ value: i, label: n }))} chosen={bands} onToggle={(v) => setBands(bands.includes(v) ? bands.filter((x) => x !== v) : [...bands, v])} />
+            <input placeholder="Search all rolls by tier, like Hoard, or by wallet" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Tier or wallet" />
+            {/* Filters about rolls: the tier rolled, and its rarity, with each one's share of all rolls so far. */}
+            <FilterMenu label="Tier" options={allRows.map((t) => ({ value: t.name, label: t.name, mark: rollIconName(t.name) ? <span className={`trait-icon t${tier(t.points)}`}><PixelIcon name={rollIconName(t.name)!} unit={1.5} tight /></span> : undefined, note: data?.total ? shareText(data.counts[t.name] ?? 0, data.total) : '' }))} chosen={names} onToggle={(v) => setNames(names.includes(v) ? names.filter((x) => x !== v) : [...names, v])} />
+            <FilterMenu label="Rarity" options={TIER_NAMES.map((n, i) => ({ value: i, label: n, mark: <i className={`tier-dot t${i}`} />, note: rollShare(i) }))} chosen={bands} onToggle={(v) => setBands(bands.includes(v) ? bands.filter((x) => x !== v) : [...bands, v])} />
             <button className="btn btn-primary">Search</button>
           </form>
-          {(query || bands.length > 0) && (
+          {searching && (
             <p className="search-summary">
               <span className="muted">{rows.length} {rows.length === 1 ? 'tier' : 'tiers'} and {recentRows.length} {recentRows.length === 1 ? 'roll' : 'rolls'} match</span>
-              <button type="button" className="chip-clear" onClick={() => { setQ(''); setBands([]); }}>Clear all</button>
+              <button type="button" className="chip-clear" onClick={() => { setQ(''); setBands([]); setNames([]); }}>Clear all</button>
             </p>
           )}
         </section>
-        {/* The latest rolls first, in the frame with the colour cycling border, like the 5 rarest Strikes. */}
-        <section className="feature-frame">
-          <div className="feature-inner">
-            <div className="panel-head panel-head-stack">
-              {/* DRAFT heading and line, awaiting Harriet's approval. */}
-              <h2>Latest rolls</h2>
-              <p className="muted list-sub">The newest rolls, as they land on the chain.</p>
+        {/* Not searching: the five newest rolls, in the frame with the colour cycling border. Searching: the
+            matches among the latest rolls instead, in a plain container, saying how far back it looked. */}
+        {!searching ? (
+          <section className="feature-frame">
+            <div className="feature-inner">
+              <div className="panel-head panel-head-stack">
+                {/* DRAFT heading and line, awaiting Harriet's approval. */}
+                <h2>Latest rolls</h2>
+                <p className="muted list-sub">The newest rolls, as they land on the chain.</p>
+              </div>
+              {!data ? <Loading /> : !data.recent.length ? <p className="muted small">No rolls yet.</p> : (
+                <ul className="strike-feature">
+                  {data.recent.slice(0, 5).map((r) => (
+                    <li key={r.signature}>
+                    {/* Same card as a Strike: symbol top left, tier and wallet beside it, rarity top right, slot at the bottom. */}
+                    <header className="post-head">
+                      <RollCoin points={r.points} name={r.name} />
+                      <span className="post-who">
+                        <strong className="strike-title">{r.name}</strong>
+                        <a href={`#/wallet/${r.holder}`} className="small muted">{short(r.holder)}</a>
+                      </span>
+                      <span className="rarity-tag"><i className={`tier-dot t${tier(r.points)}`} />{TIER_NAMES[tier(r.points)]}</span>
+                    </header>
+                    <a className="small muted card-foot-line" href={explorer('tx', r.signature)} target="_blank" rel="noreferrer">Slot {r.slot}</a>
+                  </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {!data ? <Loading /> : !recentRows.length ? (
-              <p className="muted small">{data.recent.length ? 'No rolls match.' : 'No rolls yet.'}</p>
-            ) : (
+          </section>
+        ) : (
+          <section className="panel">
+            <div className="panel-head panel-head-stack">
+              <h2>{recentRows.length} {recentRows.length === 1 ? 'roll' : 'rolls'} found</h2>
+              <p className="muted list-sub">Matching your search among the latest {data?.recent.length ?? 0} rolls, newest first.</p>
+            </div>
+            {!data ? <Loading /> : !recentRows.length ? <p className="muted small">No rolls match.</p> : (
               <ul className="strike-feature">
-                {recentRows.slice(0, 5).map((r) => (
-                  <li key={r.signature} className={`t${tier(r.points)}`}>
-                    <RollCoin points={r.points} name={r.name} />
-                    <strong className="strike-title">{r.name}</strong>
-                    <span className="feature-tier">{TIER_NAMES[tier(r.points)]}</span>
-                    <a href={`#/wallet/${r.holder}`} className="mono small">{short(r.holder)}</a>
-                    <a className="mono small muted" href={explorer('tx', r.signature)} target="_blank" rel="noreferrer">slot {r.slot}</a>
+                {recentRows.slice(0, 40).map((r) => (
+                  <li key={r.signature}>
+                    {/* Same card as a Strike: symbol top left, tier and wallet beside it, rarity top right, slot at the bottom. */}
+                    <header className="post-head">
+                      <RollCoin points={r.points} name={r.name} />
+                      <span className="post-who">
+                        <strong className="strike-title">{r.name}</strong>
+                        <a href={`#/wallet/${r.holder}`} className="small muted">{short(r.holder)}</a>
+                      </span>
+                      <span className="rarity-tag"><i className={`tier-dot t${tier(r.points)}`} />{TIER_NAMES[tier(r.points)]}</span>
+                    </header>
+                    <a className="small muted card-foot-line" href={explorer('tx', r.signature)} target="_blank" rel="noreferrer">Slot {r.slot}</a>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
-        </section>
+          </section>
+        )}
         <div className="tabs" role="tablist" aria-label="View">
           {/* DRAFT tab label, awaiting Harriet's approval. */}
           <button type="button" role="tab" aria-selected className="tab on">Rolled tiers</button>
@@ -441,8 +484,8 @@ export function RollStats({ title = 'Rolled tiers', pageHead = false }: { title?
         <section className="panel">
           <div className="panel-head panel-head-stack">
             {/* DRAFT heading and line, awaiting Harriet's approval. */}
-            <h2>Every tier</h2>
-            <p className="muted list-sub">The odds of each tier, how many have been rolled, how many still exist, and the desk floor.</p>
+            <h2>Odds by tier</h2>
+            <p className="muted list-sub">How many of each have been rolled, how many still exist, and the lowest price on the desk.</p>
           </div>
           {table}
         </section>

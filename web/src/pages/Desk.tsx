@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { PixelLoader, PixelTick } from '../components/PixelTick.tsx';
 import { FilterMenu } from '../components/FilterMenu.tsx';
 import { ENV_H, ENV_W, envelopeShape } from '../components/HeroWord.tsx';
-import { TraitIcon, shareText, traitShare } from '../components/TraitIcons.tsx';
+import { PixelIcon, TraitIcon, rollIconName, shareText, traitShare } from '../components/TraitIcons.tsx';
 import { TIER_NAMES, tier } from '../format.ts';
 import { api, useApi } from '../api.ts';
 import type { Envelope, Stats } from '../api.ts';
@@ -11,11 +11,18 @@ import type { Check } from '../chain.ts';
 import { useWallet } from '../chain.ts';
 import { feeOf, feePct, fmtRange, fmtTokens, short, sol } from '../format.ts';
 import { matches, verifyReveal } from '../verify.ts';
-import { Addr, ErrorNote, Loading, Modal, SegmentList, Traits, runTx } from '../components/ui.tsx';
+import { Addr, ErrorNote, Loading, Modal, SegmentList, StrikeCardView, Traits, runTx } from '../components/ui.tsx';
 import { RollBadge } from '../components/Roll.tsx';
 
 type Order = 'low' | 'high';
 const TRAIT_NAMES = ['Genesis', 'Key Date', 'Final Strike', 'Common Date', 'Double Die', 'Wrong Planchet', 'Off Center', 'Clipped Planchet', 'Die Crack'];
+// The rolled tiers, rarest first, so a rolled envelope can be found by its tier.
+const ROLL_NAMES = ['Hoard', 'Pattern', 'Die Trial', 'Overstrike', 'Restrike', 'Second Strike', 'Recoinage', 'Reissue', 'Mint Run', 'Assay', 'Coal'];
+const ROLL_POINTS: Record<string, number> = { Hoard: 100, Pattern: 85, 'Die Trial': 70, Overstrike: 55, Restrike: 45, 'Second Strike': 30, Recoinage: 25, Reissue: 20, 'Mint Run': 15, Assay: 10, Coal: 0 };
+function RollMark({ name }: { name: string }) {
+  const icon = rollIconName(name);
+  return icon ? <span className={`trait-icon t${tier(ROLL_POINTS[name] ?? 0)}`}><PixelIcon name={icon} unit={1.5} tight /></span> : null;
+}
 
 export function Desk() {
   const { data, error } = useApi<Envelope[]>('/envelopes?status=listed');
@@ -33,11 +40,16 @@ export function Desk() {
   const toggle = <T,>(list: T[], set: (v: T[]) => void, v: T) => set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const term = q.trim().replace(/^#/, '').toLowerCase();
   const searching = term !== '' || tiers.length > 0 || traits.length > 0;
-  const listings = [...(data ?? [])]
+  // A listing's rarity is its rarest Strike or its rolled tier; its traits are its Strikes' traits plus any rolled tier.
+  const rarityOf = (e: Envelope) => tier(Math.max(e.segments.reduce((m, s) => Math.max(m, s.rank), 0), e.roll?.points ?? 0));
+  const traitsOf = (e: Envelope) => [...e.segments.flatMap((s) => s.traits ?? []), ...(e.roll ? [e.roll.name] : [])];
+  const all = data ?? [];
+  const count = (n: number) => (n ? `${n} listed` : '');
+  const listings = [...all]
     .filter((e) =>
-      (term === '' || e.segments.some((s) => String(s.strike) === term) || e.address.toLowerCase().includes(term) || e.holder.toLowerCase().includes(term)) &&
-      (!tiers.length || e.segments.some((s) => tiers.includes(tier(s.rank)))) &&
-      (!traits.length || e.segments.some((s) => (s.traits ?? []).some((t) => traits.includes(t)))))
+      (term === '' || e.segments.some((s) => String(s.strike) === term) || e.address.toLowerCase().includes(term) || e.holder.toLowerCase().includes(term) || (e.roll?.name.toLowerCase().includes(term) ?? false)) &&
+      (!tiers.length || tiers.includes(rarityOf(e))) &&
+      (!traits.length || traitsOf(e).some((t) => traits.includes(t))))
     .sort((a, b) => (order[0] ? (order[0] === 'high' ? -1 : 1) * Number(BigInt(a.price) - BigInt(b.price)) : 0));
   const clear = () => { setQ(''); setTiers([]); setTraits([]); };
 
@@ -60,9 +72,10 @@ export function Desk() {
       {/* Search, as on the Strikes page. DRAFT wording, awaiting Harriet's approval. */}
       <section className="strike-search top-search">
         <form className="search-row" onSubmit={(e) => e.preventDefault()}>
-          <input placeholder="Search by Strike number, envelope or wallet" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search listings" />
-          <FilterMenu label="Rarity" options={[0, 1, 2, 3].map((t) => ({ value: t, label: TIER_NAMES[t], mark: <i className={`tier-dot t${t}`} />, note: tierShare(t) }))} chosen={tiers} onToggle={(v) => toggle(tiers, setTiers, v)} />
-          <FilterMenu label="Trait" options={TRAIT_NAMES.map((n) => ({ value: n, label: n, mark: <TraitIcon trait={n} />, note: traitShare(n), sep: n === 'Double Die', heading: n === 'Genesis' ? 'Date, set by when it was bought' : n === 'Double Die' ? 'Error, assigned at the reveal' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
+          <input placeholder="Search all listings by Strike number, envelope or wallet" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search listings" />
+          {/* Filters about what is for sale: counts are of current listings, and rolled envelopes count too. */}
+          <FilterMenu label="Rarity" options={[0, 1, 2, 3].map((t) => ({ value: t, label: TIER_NAMES[t], mark: <i className={`tier-dot t${t}`} />, note: count(all.filter((e) => rarityOf(e) === t).length) }))} chosen={tiers} onToggle={(v) => toggle(tiers, setTiers, v)} />
+          <FilterMenu label="Trait" options={[...TRAIT_NAMES, ...ROLL_NAMES].map((n) => ({ value: n, label: n, mark: ROLL_NAMES.includes(n) ? <RollMark name={n} /> : <TraitIcon trait={n} />, note: count(all.filter((e) => traitsOf(e).includes(n)).length), sep: n === 'Double Die' || n === ROLL_NAMES[0], heading: n === 'Genesis' ? 'Date' : n === 'Double Die' ? 'Error' : n === ROLL_NAMES[0] ? 'Rolled' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
           <FilterMenu label="Price" options={[{ value: 'low' as Order, label: 'Lowest first' }, { value: 'high' as Order, label: 'Highest first' }]} chosen={order} onToggle={(v) => setOrder(order[0] === v ? [] : [v])} />
           <button className="btn btn-primary">Search</button>
         </form>
@@ -143,14 +156,14 @@ function BuyModal({ envelope, onClose }: { envelope: Envelope; onClose: () => vo
     <Modal title={`Envelope ${short(envelope.address)}`} onClose={onClose}>
       {/* The same card as on the desk, larger. */}
       <div className="post buy-post"><EnvelopeCard envelope={envelope} /></div>
-      <p className="small muted">
-        You pay exactly the price. The seller receives {sol(BigInt(envelope.price) - feeOf(envelope.price, config.feeBps))} SOL;{' '}
-        {sol(feeOf(envelope.price, config.feeBps))} SOL ({feePct(config.feeBps)}) is the Sequents desk fee.
-      </p>
-      <p className="small muted">
-        Buying makes you the envelope's holder. You can keep it, gift it, list it again, or withdraw the tokens —
-        withdrawing melts them into ordinary $PROOF.
-      </p>
+      {/* The same facts as before, laid out as a labelled list like the card above. DRAFT wording. */}
+      <dl className="post-details buy-terms">
+        <dt>You pay</dt><dd><strong>{sol(envelope.price)} SOL</strong>, exactly the price</dd>
+        <dt>Seller gets</dt><dd>{sol(BigInt(envelope.price) - feeOf(envelope.price, config.feeBps))} SOL</dd>
+        <dt>Desk fee</dt><dd>{sol(feeOf(envelope.price, config.feeBps))} SOL ({feePct(config.feeBps)}) to Sequents</dd>
+        <dt>Then</dt><dd>The envelope is yours. Keep it, gift it or list it again.</dd>
+        <dt>Withdraw</dt><dd className="muted">Taking the tokens out melts them into ordinary $PROOF.</dd>
+      </dl>
 
       {!checks && !running ? (
         <button className="btn btn-ghost wide" onClick={runChecks}>Verify holdings</button>
@@ -191,8 +204,9 @@ function BuyModal({ envelope, onClose }: { envelope: Envelope; onClose: () => vo
 
 // The envelope itself as the post's picture, in the colour of the rarest Strike sealed inside.
 const ENVELOPE = envelopeShape(ENV_W, ENV_H, 0).map(([dc, dr]) => [dc + (ENV_W - 1) / 2, dr + (ENV_H - 1) / 2]);
-function EnvelopePic({ envelope }: { envelope: Envelope }) {
-  const top = envelope.segments.reduce((m, s) => Math.max(m, s.rank), -1);
+// Shared with the wallet page's envelope cards. A rolled envelope takes its rolled tier's colour.
+export function EnvelopePic({ envelope }: { envelope: Envelope }) {
+  const top = Math.max(envelope.segments.reduce((m, s) => Math.max(m, s.rank), -1), envelope.roll ? envelope.roll.points : -1);
   return (
     <svg className={`avatar ${top < 0 ? 'avatar-empty' : `t${tier(top)}`}`} viewBox={`-1 -1 ${ENV_W + 2} ${ENV_W + 2}`} aria-hidden shapeRendering="crispEdges">
       {ENVELOPE.map(([x, y]) => <rect key={`${x},${y}`} x={x + 0.08} y={y + 1 + 0.08} width={0.84} height={0.84} />)}
@@ -213,25 +227,35 @@ function EnvelopeCard({ envelope: e }: { envelope: Envelope }) {
         </span>
         <span className="price">{sol(e.price)} <small>SOL</small></span>
       </header>
-      {/* What is inside, as one labelled list. DRAFT labels, awaiting Harriet's approval. */}
-      <dl className="post-details">
-        <dt>Envelope</dt><dd>{short(e.address)}</dd>
-        {(e.roll || e.rolling) && <><dt>Rolled</dt><dd><RollBadge e={e} /></dd></>}
-        {!e.segments.length && <><dt>Inside</dt><dd className="muted">{e.roll ? 'Ordinary $PROOF carrying a rolled tier.' : 'No rare Strikes: the contents are ordinary $PROOF.'}</dd></>}
+      <EnvelopeDetails envelope={e} />
+    </>
+  );
+}
+
+// What is inside an envelope, as one labelled list. Shared by the desk cards and the wallet page's envelopes.
+export function EnvelopeDetails({ envelope: e, showAddress = true }: { envelope: Envelope; showAddress?: boolean }) {
+  // DRAFT labels, awaiting Harriet's approval.
+  return (
+    <>
+    <dl className="post-details">
+      {showAddress && <><dt>Envelope</dt><dd>{short(e.address)}</dd></>}
+      {(e.roll || e.rolling) && <><dt>Rolled</dt><dd><RollBadge e={e} /></dd></>}
+      {!e.segments.length && <><dt>Inside</dt><dd className="muted">{e.roll ? 'Ordinary $PROOF carrying a rolled tier.' : 'No rare Strikes: the contents are ordinary $PROOF.'}</dd></>}
+      {BigInt(e.common) > 0n && <><dt>Also</dt><dd>{fmtTokens(e.common)} ordinary $PROOF</dd></>}
+    </dl>
+    {/* Each Strike inside, as the same Strike card as on the Strikes page. */}
+    {e.segments.length > 0 && (
+      <div className="env-strikes">
         {e.segments.map((s) => {
           const amount = BigInt(s.end) - BigInt(s.start);
-          const whole = amount === 1_000_000_000_000n;
           return (
-            <Fragment key={s.start}>
-              <dt className="post-split">Strike</dt><dd className="post-split"><a href={`#/strike/${s.strike}`}>#{s.strike}</a></dd>
-              <dt>Traits</dt><dd><Traits traits={s.traits} rank={s.rank} /></dd>
-              <dt>Tokens</dt>
-              <dd>{whole ? `${fmtTokens(amount)}, the whole Strike` : <>{fmtTokens(amount)}<span className="muted"> (numbers {fmtRange(s.start, s.end).replace(' – ', ' to ')})</span></>}</dd>
-            </Fragment>
+            <div key={s.start} className="strike-mini">
+              <StrikeCardView strike={s.strike} rank={s.rank} traits={s.traits} part={amount} whole={1_000_000_000_000n} sub={`${fmtTokens(amount)} tokens`} />
+            </div>
           );
         })}
-        {BigInt(e.common) > 0n && <><dt>Also</dt><dd>{fmtTokens(e.common)} ordinary $PROOF</dd></>}
-      </dl>
+      </div>
+    )}
     </>
   );
 }

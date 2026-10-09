@@ -1250,3 +1250,176 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 .strike-feature li + li { border-left: 1px solid var(--frame); }
 .strike-feature li:hover { transform: translateY(-4px); border-color: var(--ink); }
 @media (max-width: 900px) { .strike-feature li { border-bottom: 1px solid var(--frame); } .strike-feature li + li { border-left: 1px solid var(--frame); } }
+
+/* ---- My wallet, rebuilt: same header, tabs and panels as Strikes, Rolls and Desk ---- */
+.wallet-connect { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.wallet-connect .list-sub { margin: 0 0 8px; }
+.tabs + .roll-panel { border-top-left-radius: 0; }
+/* Origin accounts: a header line, then rows lined up in columns: tick, coin, traits and range, amount. */
+.origin { padding: 18px 0; border-top: 1px solid var(--ink); }
+.origin + .origin { margin-top: 18px; }
+.origin-head { margin-bottom: 10px; }
+.segments.selectable li { display: grid; grid-template-columns: 22px 64px 1fr 160px; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--soft); }
+.segments.selectable li .seg-main { display: flex; flex-direction: column; gap: 6px; }
+.segments.selectable li .seg-amt { text-align: right; }
+.segments.selectable li.selected { background: var(--soft); }
+.origin-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+/* Envelopes: square cards in a grid with gaps, each a labelled list, buttons in one row at the bottom. */
+.wallet-envelopes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.wallet-env { border: 1px solid var(--frame); padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wallet-env .post-details { margin: 0; }
+.wallet-env .segments { margin: 0; }
+.wallet-env .card-foot { margin-top: auto; display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--soft); padding-top: 16px; }
+.wallet-env .card-foot .btn { flex: 1 1 auto; text-align: center; }
+@media (max-width: 720px) { .segments.selectable li { grid-template-columns: 22px 48px 1fr; } .segments.selectable li .seg-amt { grid-column: 3; text-align: left; } }
+
+/* The Roll tab, when open, wears the same colour cycling edge as the roll frame below it and joins it with no
+   line between, so tab and frame read as one object. */
+.tab.tab-roll { position: relative; isolation: isolate; overflow: hidden; border-color: transparent; z-index: 2; margin-bottom: -2px; padding-bottom: 13px; }
+.tab.tab-roll::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 4000px; height: 4000px; margin: -2000px 0 0 -2000px; z-index: -2;
+  background: conic-gradient(var(--t0) 0 25%, var(--t1) 25% 50%, var(--t2) 50% 75%, var(--t3) 75% 100%);
+  animation: feature-spin 9s linear infinite;
+}
+.tab.tab-roll::after { content: ''; position: absolute; inset: 2px 2px 0 2px; background: var(--bg); z-index: -1; }
+@media (prefers-reduced-motion: reduce) { .tab.tab-roll::before { animation: none; } }
+
+/* The Roll tab, before it is opened: greyed like the other closed tabs, but with the same colour cycling
+   outline it wears when open, so it still draws the eye. */
+.tab.tab-roll-idle { position: relative; overflow: hidden; isolation: isolate; border-color: transparent; z-index: 2; }
+.tab.tab-roll-idle::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 4000px; height: 4000px; margin: -2000px 0 0 -2000px; z-index: -2;
+  background: conic-gradient(var(--t0) 0 25%, var(--t1) 25% 50%, var(--t2) 50% 75%, var(--t3) 75% 100%);
+  animation: feature-spin 9s linear infinite;
+}
+.tab.tab-roll-idle::after { content: ''; position: absolute; inset: 2px; background: var(--soft); z-index: -1; }
+@media (prefers-reduced-motion: reduce) { .tab.tab-roll-idle::before { animation: none; } }
+
+/* Wallet envelope cards: one thin border each, like the desk cards. */
+.cards.wallet-envelopes > .card { border: 1px solid var(--frame); margin: 0; box-shadow: none; }
+.cards.wallet-envelopes { border: 0; }
+
+/* What melts if I sell: under each account beside Seal. Open, it is a small search bar in the same row,
+   and the answer is a box across the full width under it, in two columns. */
+.melt-bar { flex: 1 1 360px; margin: 0; }
+.melt-box { flex: 1 0 100%; border: 1px solid var(--ink); padding: 18px 20px; margin-top: 4px; }
+.melt-result { display: grid; grid-template-columns: 200px 1fr; gap: 24px; }
+.melt-result > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.melt-result strong { font-size: 22px; line-height: 1.1; font-weight: 500; }
+@media (max-width: 720px) { .melt-result { grid-template-columns: 1fr; } }
+
+/* Wallet tally: three numbers when it is your own wallet. The Roll tab repeats the rollable amount, large. */
+.roll-stat-box:has(> div:nth-child(3)) { grid-template-columns: 1fr 1fr 1fr; }
+.roll-ready { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 18px; }
+.roll-ready strong { font-size: 32px; line-height: 1; font-weight: 500; }
+
+/* Every tabbed box opens the same way: one grey line top left, no second title. A little room before the content. */
+.panel.tabbed > .view-head, .roll-feature .view-head { margin-bottom: 24px; }
+.panel.tabbed > .view-head .view-line, .roll-feature .view-head .view-line { max-width: 62ch; }
+
+/* Wallet token accounts: no heavy black rule. The account sits small at the top right of its group, with an
+   info icon whose hover text explains it, and the ordinary amount under it. */
+.origin { border-top: 0; padding: 0; }
+.origin + .origin { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--frame); }
+.origin-head { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; margin-bottom: 4px; }
+.origin-acct { display: inline-flex; align-items: center; gap: 6px; }
+.info-dot { display: inline-grid; place-items: center; width: 14px; height: 14px; border: 1px solid var(--muted); color: var(--muted); font-size: 9px; line-height: 1; cursor: help; text-transform: none; }
+.info-dot:hover, .info-dot:focus-visible { border-color: var(--purple); color: var(--purple); outline: none; }
+
+/* The token account info label: the black hover label from the Rules coins, opening below and to the left. */
+.info-wrap { position: relative; display: inline-flex; }
+.hover-tip.info-tip { position: absolute; top: calc(100% + 8px); right: 0; left: auto; width: 300px; text-align: left; z-index: 20; pointer-events: none; }
+
+/* Envelope pictures on the Desk and My wallet: the thin light grey line the cards use, not black, so the coloured envelope stands out. */
+.avatar { border-color: var(--frame); }
+
+/* Rare tokens as cards, like the envelopes. A selected card gets a black edge; the tick box sits top right. */
+.token-card.selectable { cursor: pointer; }
+.token-card.selectable:hover { border-color: var(--muted); }
+.token-card.selected, .token-card.selected:hover { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.token-card .post-head input[type="checkbox"] { align-self: flex-start; width: 16px; height: 16px; accent-color: #000; }
+.token-card .post-head .coin { flex: none; }
+.cards.wallet-envelopes > .token-card.selected { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.cards.wallet-envelopes > .token-card.selectable:not(.selected):hover { border-color: var(--muted); }
+
+/* Strike coins are round and square in size (9 by 9), not envelope shaped. */
+.coin-grid { height: var(--size); }
+
+/* A Strike's picture as its headline trait symbol, in its rarity colour, at the coin's size. Not yet bought: grey. */
+.coin-trait { display: block; width: var(--size); height: var(--size); }
+.coin-trait .pi { width: 100%; height: 100%; display: block; }
+.coin-trait .pi-t { fill: var(--tier); }
+.coin-trait.coin-unbought .pi-t, .coin-trait.coin-unbought .pi-k, .coin-trait.coin-unbought .pi-G { fill: #dcdcdc; }
+
+/* One card layout for the live pages (5 rarest, Strike search results, Latest rolls, wallet cards):
+   picture top left, name and a grey line beside it, the rarity as a dot and word top right, details under,
+   any footer line (like the slot) at the bottom. */
+.strike-feature li { gap: 14px; }
+.strike-feature .post-head { width: 100%; align-items: flex-start; }
+.strike-feature .post-head .coin, .strike-feature .post-head .roll-coin { flex: none; }
+.rarity-tag { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; white-space: nowrap; }
+.strike-feature .card-foot-line { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--soft); width: 100%; }
+.strike-feature .roll-coin { --size: 40px; margin: 0; }
+.token-card .post-head input[type="checkbox"] { margin-left: 4px; }
+.post-who .strike-title { font-weight: 700; color: var(--ink); }
+/* In the narrow featured cards: picture top left, rarity top right, then the name and its grey line under them. */
+.strike-feature .post-head { flex-wrap: wrap; row-gap: 12px; }
+.strike-feature .post-head .post-who { order: 3; flex: 1 0 100%; }
+.strike-feature .post-head .rarity-tag { align-self: flex-start; }
+.strike-feature .post-who > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Roll symbols in cards drawn at the same size as the Strike pictures beside them. */
+.strike-feature .roll-coin.roll-icon svg.pi { width: 66px; height: 66px; margin: -12px -12px -14px -13px; }
+
+/* Strikes inside an envelope (Desk and My wallet): each the shared Strike card in a small box. */
+.env-strikes { display: grid; gap: 8px; }
+.strike-mini { border: 1px solid var(--soft); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.strike-mini .post-head { align-items: flex-start; }
+.post-who .strike-title { font-weight: 700; color: var(--ink); }
+
+/* What melts if I sell, open: a small bar in the same row as Seal, the same height as the buttons, not a
+   page-wide search bar. */
+.origin-actions { align-items: stretch; }
+.search-row.melt-bar { flex: 0 0 auto; display: flex; gap: 8px; margin: 0; align-items: stretch; }
+.search-row.melt-bar input { width: 220px; flex: none; height: auto; min-height: 0; padding: 0 12px; }
+.search-row.melt-bar .btn { height: auto; }
+
+/* A rolled envelope's tier: symbol, name, then the rarity dot and word, no outlined box. */
+.roll-badge-row { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.roll-badge-row .roll-coin { --size: 22px; margin: 0; }
+.roll-badge-row .rarity-tag { margin-left: 8px; }
+
+/* The shared Strike card header, the same everywhere: picture top left, rarity (and any tick box) top right,
+   then the Strike number and its grey line under them. */
+.strike-card-head { flex-wrap: wrap; row-gap: 12px; align-items: flex-start; width: 100%; }
+.strike-card-head .post-who { order: 3; flex: 1 0 100%; }
+.strike-card-head .post-who > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strike-card-head .rarity-tag { align-self: flex-start; }
+
+/* My wallet, Rare tokens: one Strike per row, stacked, the whole row selectable. Tick box first, then the
+   picture, the Strike number and tokens, the trait tags, and the rarity on the right. (Envelopes stay cards.) */
+.cards.wallet-envelopes.token-cards { grid-template-columns: 1fr; gap: 0; }
+.cards.wallet-envelopes.token-cards > .token-card { flex-direction: row; align-items: center; gap: 20px; border: 0; border-top: 1px solid var(--soft); box-shadow: none; padding: 14px 12px; min-height: 0; }
+.cards.wallet-envelopes.token-cards > .token-card:last-child { border-bottom: 1px solid var(--soft); }
+.token-cards .strike-card-head { display: contents; }
+.token-cards .strike-card-head input[type="checkbox"] { order: 0; align-self: center; margin: 0; }
+.token-cards .strike-card-head .coin { order: 1; --size: 32px; }
+.token-cards .strike-card-head .post-who { order: 2; flex: 0 0 200px; }
+.token-cards .token-card > .traits { order: 3; flex: 1; }
+.token-cards .strike-card-head .rarity-tag { order: 4; align-self: center; }
+.cards.wallet-envelopes.token-cards > .token-card.selectable:hover { background: var(--soft); border-color: var(--soft); }
+.cards.wallet-envelopes.token-cards > .token-card.selected,
+.cards.wallet-envelopes.token-cards > .token-card.selected:hover { background: var(--soft); box-shadow: inset 3px 0 0 var(--ink); border-color: var(--soft); }
+@media (max-width: 720px) { .token-cards .token-card { flex-wrap: wrap; } .token-cards .token-card > .traits { flex-basis: 100%; } }
+
+/* Type MELT (or GIFT) to confirm: the instruction on one line, the box under it. Style only. */
+.typed-confirm label { display: block; }
+.typed-confirm label input { display: block; width: 100%; margin-top: 8px; }
+/* Explanations inside pop-ups are grey, like the lines under titles everywhere else. Warnings stay as they are. */
+.modal p.small:not(.melt-banner):not(.melt-word):not(.ok-word) { color: var(--muted); }
+
+/* Review and buy: the price and terms as a labelled list, with a rule above it. */
+.buy-terms { border-top: 1px solid var(--soft); padding-top: 16px; grid-template-columns: 96px 1fr; }
+
+/* A Strike sealed inside an envelope: its picture smaller than the envelope picture above it, so it reads as inside the casing. */
+.strike-mini .coin { --size: 26px; }
+.strike-mini { background: var(--bg); }

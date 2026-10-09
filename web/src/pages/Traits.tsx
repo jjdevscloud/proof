@@ -72,9 +72,8 @@ export function Traits() {
       <section className="panel tabbed">
         {view === 'curve' ? (
           <>
-            <div className="panel-head panel-head-stack">
-              <h2>Strike traits</h2>
-              <p className="muted list-sub">On the curve means bought from the bonding curve during the sale. Those tokens get numbers, and every Strike has a date trait and may have one error.</p>
+            <div className="view-head">
+              <p className="muted view-line">On the curve means bought from the bonding curve during the sale. Those tokens get numbers, and every Strike has a date trait and may have one error.</p>
             </div>
             <table className="table traits-table">
               <thead>
@@ -91,10 +90,9 @@ export function Traits() {
           // The rolled tiers as a plain table like the Strike traits. The full live panel (counts, listings,
           // floors, latest rolls) is RollStats in Roll.tsx, kept for the Strikes page.
           <>
-            <div className="panel-head panel-head-stack">
-              <h2>Rolled tiers</h2>
+            <div className="view-head">
               {/* DRAFT line, awaiting Harriet's approval. */}
-              <p className="muted list-sub">After the curve means bought once the curve has sold out, on any exchange. Those tokens are ordinary, and can be sealed and rolled for one of these tiers.</p>
+              <p className="muted view-line">After the curve means bought once the curve has sold out, on any exchange. Those tokens are ordinary, and can be sealed and rolled for one of these tiers.</p>
             </div>
             {config.roll ? (
               <table className="table traits-table">

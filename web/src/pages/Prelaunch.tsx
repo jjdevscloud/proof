@@ -36,7 +36,7 @@ export function Prelaunch() {
         <More>
         <p className="lede">
           Every $PROOF token will cost the same. Some of them will be rare. Rarity survives only in the wallet that bought it
-          off the curve — or sealed in an envelope. Anything that leaves either place <strong className="melt-word">melts</strong>,
+          off the curve, or sealed in an envelope. Anything that leaves either place <strong className="melt-word">melts</strong>,
           forever.
         </p>
         </More>
@@ -60,7 +60,7 @@ export function Prelaunch() {
           <section className="panel">
             <h2>Random errors</h2>
             <More><p className="muted small">
-              Assigned after the sale from a public Solana block, so nobody — including the team — can know or target them.
+              Assigned after the sale from a public Solana block, so nobody, including the team, can know or target them.
               At most one per Strike.
             </p></More>
             <table className="table">
@@ -97,7 +97,7 @@ export function Prelaunch() {
               </tbody>
             </table>
             <p className="muted small">
-              A Strike's rank is its date points plus its error points — a Genesis Double Die scores 140, the top of the
+              A Strike's rank is its date points plus its error points. A Genesis Double Die scores 140, the top of the
               collection. The top errors outrank any date tier.
             </p>
           </section>
@@ -111,7 +111,7 @@ export function Prelaunch() {
           <li><strong>Commitment.</strong> Minutes before the token is created, a fingerprint of the rules above is posted on-chain, with a reveal deadline.</li>
           <li><strong>Launch.</strong> $PROOF goes live on pump.fun. Every token bought off the curve gets a number; each 1,000,000 is a Strike.</li>
           <li><strong>Seed.</strong> When the curve sells out (or at the deadline), the next Solana block's hash becomes the public seed. Only Strikes sold by then can receive errors.</li>
-          <li><strong>Reveal.</strong> Traits are published — and anyone can recompute every Strike in their own browser from the rules and that block.</li>
+          <li><strong>Reveal.</strong> Traits are published, and anyone can recompute every Strike in their own browser from the rules and that block.</li>
         </ol>
         </More>
       </section>
