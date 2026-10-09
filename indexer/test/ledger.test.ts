@@ -307,3 +307,26 @@ test('a reveal whose roll rules differ from the ones the indexer applied halts t
   assert.throws(() => run({ roll: { ...roll, feeLamports: '1' } }, roll), /roll rules differ/);
   assert.throws(() => run({}, roll), /roll rules differ/);
 });
+
+test('a donation into the curve melts on the sender but is never resold as positions', () => {
+  const c = new Chain();
+  c.tx([{ kind: 'curveBuy', to: 'A', amount: 100n }]);
+  const ch = c.tx([{ kind: 'donate', from: 'A', amount: 30n }]);
+  assert.deepEqual(ch.changes, [{ kind: 'melt', account: 'A', ranges: [r(70n, 100n)], reason: 'transfer' }]);
+  assert.equal(c.ledger.curve.returned, 0n);
+  // The next buyer gets fresh positions straight away: the donated tokens are not in the curve's stock.
+  c.tx([{ kind: 'curveBuy', to: 'B', amount: 10n }]);
+  assert.deepEqual(c.ledger.holdings.get('B')!.ranges, [r(100n, 110n)]);
+});
+
+test('the curve still completes (and the seed point follows) after a donation', () => {
+  const c = new Chain();
+  const S = 793_100_000n * T;
+  c.tx([{ kind: 'commit', root: 'a'.repeat(64), deadlineSlot: 1_000_000 }]);
+  c.tx([{ kind: 'curveBuy', to: 'A', amount: 1000n }]);
+  c.tx([{ kind: 'donate', from: 'A', amount: 1000n }]);
+  c.tx([{ kind: 'curveBuy', to: 'B', amount: S - 1000n }]);
+  assert.equal(c.ledger.curve.cursor, S);
+  assert.notEqual(c.ledger.completionSlot, null);
+  assert.equal(c.ledger.seedTarget(), c.ledger.completionSlot! + SEED_DELAY_SLOTS);
+});

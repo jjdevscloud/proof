@@ -11,7 +11,7 @@ import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync 
 import { Decoder, executionOrder } from '../indexer/src/decoder.ts';
 
 const PUMP = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
-const NON_BUY = ['migrate', 'withdraw'];
+const NON_BUY = ['migrate', 'migrate_v2', 'migrate_v3', 'withdraw', 'withdraw_v2'];
 const RPC = process.argv[3] ?? 'https://api.mainnet-beta.solana.com';
 const COUNT = Number(process.argv[2] ?? 150);
 const UNUSED = '11111111111111111111111111111111';
@@ -99,7 +99,8 @@ for (const s of sigs.filter((x) => x.err === null)) {
       outflowsByIx.set(name, (outflowsByIx.get(name) ?? 0) + 1);
       const tp = c.ix.programId === TOKEN_2022_PROGRAM_ID.toBase58() ? 'Token-2022' : 'SPL Token';
       byTokenProgram.set(tp, (byTokenProgram.get(tp) ?? 0) + 1);
-      const isBuy = /^Buy/.test(name);
+      // Buys, and multi-hop swaps that buy this token off its curve (tokens out, value in).
+      const isBuy = /^Buy/.test(name) || name === 'MultiHopCurveSwap';
       const got = events.some((e) => e.kind === 'curveBuy' && e.amount === amount && e.to === info.destination);
       if (got === isBuy) correct++;
       else problems.push(`${s.signature.slice(0, 12)}… ${name}: curve outflow decoded as ${got ? 'a buy' : 'NOT a buy'}`);

@@ -31,7 +31,7 @@ check(!!parsed, 'mint exists');
 const tokenProgram = owner?.equals(TOKEN_2022) ? TOKEN_2022 : TOKEN;
 check(!!owner && (owner.equals(TOKEN) || owner.equals(TOKEN_2022)), `token program: ${owner?.equals(TOKEN_2022) ? 'Token-2022' : 'SPL Token'}`);
 check(parsed?.decimals === 6, `decimals 6 (got ${parsed?.decimals})`);
-check(parsed?.supply === (1_000_000_000n * T).toString(), `total supply 1,000,000,000 (got ${Number(BigInt(parsed?.supply ?? 0) / T).toLocaleString()})`);
+check(BigInt(parsed?.supply ?? 0) > 0n && BigInt(parsed?.supply ?? 0) <= 1_000_000_000n * T, `total supply at most 1,000,000,000 (got ${Number(BigInt(parsed?.supply ?? 0) / T).toLocaleString()})`);
 check(parsed?.mintAuthority === null, 'mint authority revoked');
 check(parsed?.freezeAuthority === null, 'freeze authority revoked');
 const exts: string[] = (parsed?.extensions ?? []).map((e: any) => e.extension);
@@ -45,11 +45,11 @@ const bc = await conn.getAccountInfo(bondingCurve);
 check(!!bc && bc.owner.equals(PUMP), 'pump.fun bonding curve found');
 if (bc) {
   // Layout: discriminator 8 | virtual token u64 | virtual sol u64 | real token u64 | real sol u64 | total supply u64 | complete bool
+  const virtualTokens = bc.data.readBigUInt64LE(8);
   const realTokens = bc.data.readBigUInt64LE(24);
   const totalSupply = bc.data.readBigUInt64LE(40);
-  const curveBalance = BigInt((await conn.getTokenAccountBalance(curveTokens)).value.amount);
-  // Everything in the curve account beyond the remaining saleable tokens is the non-saleable remainder.
-  const saleable = 1_000_000_000n * T - (curveBalance - realTokens);
+  // Virtual minus real is constant for the curve's life; it starts at 1,073,000,000 - saleable.
+  const saleable = 1_073_000_000n * T - (virtualTokens - realTokens);
   const expected = BigInt(rules.strikeSize) * BigInt(rules.strikeCount - 1) + 100_000n * T;
   check(totalSupply === 1_000_000_000n * T, 'curve total supply 1,000,000,000');
   check(saleable === 793_100_000n * T && saleable === expected, `saleable on the curve: ${Number(saleable / T).toLocaleString()} (rules expect ${Number(expected / T).toLocaleString()} → ${rules.strikeCount} Strikes)`);
@@ -71,7 +71,7 @@ const config = {
   mint: mint.toBase58(),
   curveTokenAccount: curveTokens.toBase58(),
   pumpProgramId: PUMP.toBase58(),
-  pumpNonBuyInstructions: ['migrate', 'withdraw'],
+  pumpNonBuyInstructions: ['migrate', 'migrate_v2', 'migrate_v3', 'withdraw', 'withdraw_v2'],
   vaultProgramId: need(a, 'vault-program'),
   revealAuthority: need(a, 'reveal-authority'),
   saleableSupply: (793_100_000n * T).toString(),

@@ -70,6 +70,8 @@ function BuyModal({ envelope, onClose }: { envelope: Envelope; onClose: () => vo
     setErr(null);
     try {
       const list = await vault.checkEnvelope(envelope.address, { holder: envelope.holder, price: envelope.price, ranges: envelope.ranges });
+      if (envelope.roll) list.push(await vault.verifyRoll(envelope.roll.signature, envelope.roll.name));
+      if (envelope.rolling) list.push({ label: 'No roll in progress', ok: false, detail: 'wait a few seconds for the roll to settle' });
       const v = await verifyReveal(config);
       if (v.traits) {
         list.push({ label: 'Reveal verified against the commitment and the seed block', ok: v.ok, detail: '' });

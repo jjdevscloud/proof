@@ -52,6 +52,7 @@ export class Chain {
       case 'curveBuy': this.bump(e.to, e.amount); break;
       case 'transfer': this.bump(e.from, -e.amount); this.bump(e.to, e.amount); break;
       case 'burn': this.bump(e.from, -e.amount); break;
+      case 'donate': this.bump(e.from, -e.amount); break;
       case 'seal': this.bump(e.from, -e.amount); this.bump(e.vault, e.amount); this.owners.set(e.vault, e.envelope); break;
       case 'withdraw': {
         const env = this.ledger.envelopes.get(e.envelope)!;

@@ -11,6 +11,10 @@ const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 const T = 1_000_000n;
 const SUPPLY = 1_000_000_000n * T;
+// pump.fun curves start with 1,073,000,000 virtual tokens; virtual minus real stays constant for the
+// life of the curve (buys and sells move both by the same amount), so it identifies the curve's
+// saleable amount from the curve account alone, unaffected by tokens sent into its token account.
+const PUMP_INITIAL_VIRTUAL_TOKENS = 1_073_000_000n * T;
 const RECORD_SIZE = 8 + 32 + 32 + 1; // discriminator, mint, curve token account, bump
 const RECORD_DISC = createHash('sha256').update('account:MintRecord').digest().subarray(0, 8);
 
@@ -44,7 +48,8 @@ export async function checkLaunch(rpc: Rpc, launch: Launch, pumpProgramId: strin
   fail(!!info && (mint!.owner === TOKEN || mint!.owner === TOKEN_2022), 'mint is not an SPL Token or Token-2022 mint');
   if (info) {
     fail(info.decimals === 6, `decimals ${info.decimals}, expected 6`);
-    fail(info.supply === SUPPLY.toString(), `supply ${info.supply}, expected ${SUPPLY}`);
+    // At most 1,000,000,000: anyone may burn tokens before this check runs.
+    fail(/^[0-9]+$/.test(info.supply) && BigInt(info.supply) <= SUPPLY && BigInt(info.supply) > 0n, `supply ${info.supply}, expected at most ${SUPPLY}`);
     fail(info.mintAuthority === null, 'mint authority not revoked');
     fail(info.freezeAuthority === null, 'freeze authority not revoked');
     const exts: string[] = (info.extensions ?? []).map((e: any) => e.extension);
@@ -61,9 +66,11 @@ export async function checkLaunch(rpc: Rpc, launch: Launch, pumpProgramId: strin
     if (curve.value?.owner === pumpProgramId) {
       // Layout: discriminator 8 | virtual token u64 | virtual sol u64 | real token u64 | real sol u64 | total supply u64 | complete bool
       const data = Buffer.from((curve.value.data as [string, string])[0], 'base64');
+      const virtualTokens = data.readBigUInt64LE(8);
       const realTokens = data.readBigUInt64LE(24);
-      const balance = BigInt(tokenInfo.tokenAmount.amount);
-      const saleable = SUPPLY - (balance - realTokens);
+      const totalSupply = data.readBigUInt64LE(40);
+      fail(totalSupply === SUPPLY, `curve total supply ${totalSupply}, expected ${SUPPLY}`);
+      const saleable = PUMP_INITIAL_VIRTUAL_TOKENS - (virtualTokens - realTokens);
       fail(saleable === saleableSupply, `saleable on the curve ${saleable}, expected ${saleableSupply}`);
     }
   }

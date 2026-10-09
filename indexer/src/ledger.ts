@@ -38,6 +38,7 @@ export type LedgerEvent =
   | { kind: 'curveBuy'; to: string; amount: bigint }
   | { kind: 'transfer'; from: string; to: string; amount: bigint }
   | { kind: 'burn'; from: string; amount: bigint }
+  | { kind: 'donate'; from: string; amount: bigint } // into the curve token account outside a pump.fun instruction
   | { kind: 'ownerChange'; account: string; newOwner: string }
   | { kind: 'seal'; from: string; holder: string; envelope: string; vault: string; ranges: Range[]; amount: bigint }
   | { kind: 'list'; envelope: string; price: bigint }
@@ -257,6 +258,11 @@ export class Ledger {
 
       case 'burn':
         this.takeOut(ev.from, ev.amount, 'burn');
+        return;
+
+      case 'donate':
+        // Leaves the sender (melts) but never returns to the curve's saleable stock.
+        if (ev.from !== curve) this.takeOut(ev.from, ev.amount, 'transfer');
         return;
 
       case 'ownerChange': {

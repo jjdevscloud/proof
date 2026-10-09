@@ -14,3 +14,4 @@ devnet/reveal.localnet.json
 .env*
 !.env.example
 !web/.env.demo
+web/dist-e2e/

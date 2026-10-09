@@ -2,8 +2,8 @@
 // blocks decide which tier it becomes. The browser computes the result itself from the seed block.
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useApi } from '../api.ts';
-import type { Envelope, Rolls, WalletView } from '../api.ts';
+import { api, useApi } from '../api.ts';
+import type { Envelope, Health, Rolls, WalletView } from '../api.ts';
 import type { RollRules } from '../../../indexer/src/derive.ts';
 import { useConfig, useVault } from '../App.tsx';
 import { BASE, TIER_NAMES, explorer, fmtTokens, short, sol, tier } from '../format.ts';
@@ -178,6 +178,19 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
               setErr(null);
               if (chosen < min) return setErr(`Seal at least ${fmtTokens(min)}.`);
               if (chosen > ordinary) return setErr(`You have ${fmtTokens(ordinary)} ordinary $PROOF in your main account.`);
+              // The ledger runs ~20 s behind the chain. Tokens just bought off the curve are rare but not
+              // yet indexed, and would melt if sealed as ordinary: re-check against fresh state first.
+              try {
+                const [last, health, fresh, wallet] = await Promise.all([
+                  vault.lastActivitySlot(main!.account), api<Health>('/health'), vault.mainTokenAccount(owner), api<WalletView>(`/wallet/${owner}`),
+                ]);
+                if (last > health.syncedSlot) return setErr('Your latest $PROOF transaction is still being indexed (about 20 seconds). Try again in a moment.');
+                const rareNow = wallet.accounts.find((x) => x.account === fresh.account)?.segments.reduce((t, x) => t + BigInt(x.end) - BigInt(x.start), 0n) ?? 0n;
+                const ordinaryNow = fresh.balance > rareNow ? fresh.balance - rareNow : 0n;
+                if (chosen > ordinaryNow) return setErr(`You have ${fmtTokens(ordinaryNow)} ordinary $PROOF in your main account.`);
+              } catch (x) {
+                return setErr(`Could not check your account: ${(x as Error).message}`);
+              }
               const sig = await runTx('Seal & roll', () => vault.sealAndRoll(owner, main!.account, chosen));
               if (sig) {
                 setOpen(false);
@@ -200,7 +213,7 @@ export function RollAgain({ e }: { e: Envelope }) {
   const vault = useVault();
   const [revealing, setRevealing] = useState<string | null>(null);
   const roll = config.roll;
-  const eligible = !!roll && e.status === 'sealed' && !e.rolling && !e.ranges.length
+  const eligible = !!roll && e.status === 'sealed' && !e.rolling && !(e.ranges ?? []).length
     && BigInt(e.common) >= BigInt(roll.minEntry) && !(e.roll && e.roll.points > 0);
   if (!eligible && !revealing) return null;
   return (

@@ -449,9 +449,37 @@ export class Vault {
     }
     const declared = merged.map((x) => `${x.start}-${x.end}`).join(',');
     const ledger = expect.ranges.map((x) => `${x.start}-${x.end}`).join(',');
-    add('Ledger confirms the seller really held these tokens', declared === ledger,
-      declared === ledger ? 'Sealed ranges are intact' : 'Invalid seal — the contents are ordinary $PROOF');
+    const saleable = BigInt(this.config.saleableSupply);
+    if (!expect.ranges.length && merged.length && merged.every((x) => x.start >= saleable)) {
+      add('Sealed as ordinary $PROOF (no rare Strikes claimed)', true, 'contents are ordinary $PROOF');
+    } else {
+      add('Ledger confirms the seller really held these tokens', declared === ledger,
+        declared === ledger ? 'Sealed ranges are intact' : 'Invalid seal — the contents are ordinary $PROOF');
+    }
     return checks;
+  }
+
+  // Recomputes a settled roll from the chain: the roll's slot, its seed block, and the result.
+  async verifyRoll(signature: string, expectName: string): Promise<Check> {
+    const label = `Rolled tier ${expectName} recomputed in your browser`;
+    const roll = this.config.roll;
+    if (DEMO) return { label, ok: true, detail: 'demo' };
+    if (!roll) return { label, ok: false, detail: 'rolling is not enabled' };
+    const st = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+    if (!st || st.err) return { label, ok: false, detail: 'roll transaction not found' };
+    const slots = await connection.getBlocks(st.slot + roll.seedDelaySlots, st.slot + roll.seedDelaySlots + 100, 'finalized');
+    if (!slots.length) return { label, ok: false, detail: 'seed block not finalized yet' };
+    const block = await connection.getBlock(slots[0], { commitment: 'finalized', transactionDetails: 'none', rewards: false, maxSupportedTransactionVersion: 0 });
+    if (!block) return { label, ok: false, detail: 'seed block unavailable' };
+    const got = rollResult(roll, signature, block.blockhash);
+    return { label, ok: got.name === expectName, detail: `seed block ${slots[0]}` };
+  }
+
+  // Slot of the most recent transaction touching `account` (0 if none).
+  async lastActivitySlot(account: string): Promise<number> {
+    if (DEMO) return 0;
+    const [last] = await connection.getSignaturesForAddress(new PublicKey(account), { limit: 1 }, 'confirmed');
+    return last?.slot ?? 0;
   }
 }
 

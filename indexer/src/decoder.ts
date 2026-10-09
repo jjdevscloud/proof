@@ -116,6 +116,11 @@ export class Decoder {
             && !this.pumpNonBuy.has(discriminatorOf(parent))) {
           return { kind: 'curveBuy', to, amount };
         }
+        // Into the curve: a sell-back only under a pump.fun instruction (its reserves grow and those
+        // tokens are sold again). A plain transfer in is a donation pump.fun never resells.
+        if (to === this.config.curveTokenAccount && parent?.programId !== this.config.pumpProgramId) {
+          return { kind: 'donate', from, amount };
+        }
         if (parent && parent.programId === this.config.vaultProgramId) {
           const v = this.decodeVault(parent);
           if (v?.name === 'seal' && from === v.accounts[4] && to === v.accounts[3]) {

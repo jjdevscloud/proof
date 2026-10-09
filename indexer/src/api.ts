@@ -38,6 +38,7 @@ const API_ROUTES = new Set(['health', 'config', 'rules', 'stats', 'wallet', 'str
 const RPC_METHODS = new Set([
   'getLatestBlockhash', 'getAccountInfo', 'getMultipleAccounts', 'getBalance', 'getMinimumBalanceForRentExemption',
   'sendTransaction', 'simulateTransaction', 'getSignatureStatuses', 'getBlocks', 'getBlock', 'getSlot', 'getBlockHeight',
+  'getSignaturesForAddress', // limit 1 only: has the indexer caught up with this account?
 ]);
 const RPC_PER_MINUTE = 300;
 
@@ -211,7 +212,7 @@ function traitsFor<T extends { strike: number }>(l: Ledger, segs: T[]) {
 function withTraits(l: Ledger, w: ReturnType<Ledger['wallet']>) {
   return {
     accounts: w.accounts.map((a) => ({ ...a, common: l.holdings.get(a.account)?.melted ?? 0n, segments: traitsFor(l, a.segments) })),
-    envelopes: w.envelopes.map((e) => ({ ...e, common: l.holdings.get(e.vault)?.melted ?? 0n, segments: traitsFor(l, e.segments) })),
+    envelopes: w.envelopes.map((e) => ({ ...e, ranges: l.holdings.get(e.vault)?.ranges ?? [], common: l.holdings.get(e.vault)?.melted ?? 0n, segments: traitsFor(l, e.segments) })),
   };
 }
 
@@ -323,6 +324,9 @@ async function proxyRpc(req: IncomingMessage, res: ServerResponse, upstream: str
   }
   if (Array.isArray(body) || !RPC_METHODS.has(body?.method)) {
     return reply(403, { jsonrpc: '2.0', id: body?.id ?? null, error: { code: -32601, message: 'method not allowed by this proxy' } });
+  }
+  if (body.method === 'getSignaturesForAddress' && !(Number(body.params?.[1]?.limit) >= 1 && Number(body.params?.[1]?.limit) <= 1)) {
+    return reply(403, { jsonrpc: '2.0', id: body.id, error: { code: -32602, message: 'getSignaturesForAddress is limited to limit: 1' } });
   }
   if (body.method === 'getBlock' && body.params?.[1]?.transactionDetails !== 'none') {
     return reply(403, { jsonrpc: '2.0', id: body.id, error: { code: -32602, message: 'getBlock is limited to transactionDetails: none' } });

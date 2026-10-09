@@ -64,7 +64,7 @@ export function describe(ch: Change, strikeSize: bigint): { icon: string; tone: 
 export function ActivityFeed({ items, empty = 'No activity yet.' }: { items: TxChanges[]; empty?: string }) {
   const config = useConfig();
   const size = BigInt(config.strikeSize);
-  const rows = items.flatMap((tx) => tx.changes.map((ch, i) => ({ tx, ch, key: `${tx.signature}-${i}` })));
+  const rows = items.flatMap((tx) => tx.changes.map((ch, i) => ({ tx, ch, key: `${tx.slot}-${tx.signature}-${i}-${ch.kind}` })));
   if (!rows.length) return <p className="muted small">{empty}</p>;
   return (
     <ul className="feed">
