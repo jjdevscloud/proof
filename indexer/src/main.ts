@@ -31,6 +31,7 @@ type Config = {
   revealFile?: string;
   treasury?: string;
   feeBps?: number;
+  watchMint?: boolean; // also fetch every transaction naming the mint (heavy once an AMM trades it)
 };
 
 // Settings come from a JSON file (argv[2]); hosting-specific values can be overridden by
@@ -196,7 +197,10 @@ function start(): Follower {
   loadLedger();
   lastFingerprintSlot = syncedSlot;
   const rollTreasury = rollRules?.treasury;
-  const f = new Follower(ledger, new Decoder({ ...config, rollTreasury }), rpc, { ...config, rollTreasury }, syncedSlot);
+  // The mint is watched only on request (watchMint): once trading moves to an AMM every trade names
+  // the mint, and fetching them all outruns the RPC. Holders that move are found by the batched
+  // balance check instead, which costs one request per 100 holders whatever the trading volume.
+  const f = new Follower(ledger, new Decoder({ ...config, rollTreasury }), rpc, { ...config, rollTreasury, mint: config.watchMint ? config.mint : undefined }, syncedSlot);
   follower = f;
   apiState.ledger = ledger;
   apiState.publicConfig.mint = config.mint;
