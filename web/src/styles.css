@@ -1533,3 +1533,7 @@ main.container:has(.checkable) { padding-bottom: 48px; }
 .roll-flow .reveal-body { gap: 16px; padding: 24px; }
 .roll-flow .reveal-card { width: 200px; }
 .roll-flow .roll-square .roll-coin { --size: 72px; }
+
+/* Roll pop-ups the same size as the Desk envelope pop-up (Review and buy). */
+.modal.reveal-single, .modal.reveal-single.roll-flow { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.reveal-single .reveal-body { max-height: calc(100vh - 38px); }

@@ -147,6 +147,16 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
   const [phase, setPhase] = useState<'amount' | 'sign' | 'block' | 'done'>('amount');
   const [result, setResult] = useState<{ name: string; points: number } | null>(null);
   const closeFlow = () => { setOpen(false); setErr(null); setPhase('amount'); setResult(null); };
+  // The steps tick one by one, about a second apart, even when the chain answers at once (display only).
+  const target = phase === 'amount' ? -1 : phase === 'sign' ? 0 : phase === 'block' ? 2 : 4;
+  const [shownAt, setShownAt] = useState(-1);
+  useEffect(() => {
+    if (target < 0) { setShownAt(-1); return; }
+    if (shownAt >= target) return;
+    const t = setTimeout(() => setShownAt((n) => n + 1), shownAt < 0 ? 150 : 1000);
+    return () => clearTimeout(t);
+  }, [target, shownAt]);
+  const landed = phase === 'done' && shownAt >= 4;
 
   useEffect(() => {
     if (!roll) return;
@@ -206,15 +216,14 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
               {/* DRAFT wording, awaiting Harriet's approval. */}
               <div className="reveal-head">
                 <div>
-                  <h2>{phase === 'amount' ? 'Seal & roll' : phase === 'sign' ? 'Waiting for your wallet' : phase === 'block' ? 'Rolling' : 'Your roll'}</h2>
-                  <p className="muted list-sub">{phase === 'done' ? 'The block has decided.' : 'Every step happens here.'}</p>
+                  <h2>{phase === 'amount' ? 'Seal & roll' : landed ? 'Your roll' : phase === 'sign' ? 'Waiting for your wallet' : 'Rolling'}</h2>
+                  <p className="muted list-sub">{landed ? 'The block has decided.' : 'Every step happens here.'}</p>
                 </div>
-                {(phase === 'amount' || phase === 'done') && <button className="icon-btn" onClick={closeFlow} aria-label="Close">×</button>}
+                {(phase === 'amount' || landed) && <button className="icon-btn" onClick={closeFlow} aria-label="Close">×</button>}
               </div>
               <ol className="roll-steps">
                 {['Seal and pay', 'Confirmed on Solana', 'The next block decides', 'Your tier'].map((label, n) => {
-                  const at = phase === 'amount' ? -1 : phase === 'sign' ? 0 : phase === 'block' ? 2 : 4;
-                  const state = n < at ? 'done' : n === at ? 'now' : 'wait';
+                  const state = n < shownAt ? 'done' : n === shownAt ? 'now' : 'wait';
                   return (
                     <li key={label} className={`roll-step ${state}`}>
                       <span className="roll-step-mark">{state === 'done' ? <PixelTick /> : state === 'now' ? <BrandLoader /> : n + 1}</span>
@@ -277,20 +286,20 @@ export function RollPanel({ owner, data }: { owner: string; data: WalletView }) 
                 </>
               )}
 
-              {(phase === 'sign' || phase === 'block') && (
+              {(phase === 'sign' || phase === 'block' || (phase === 'done' && !landed)) && (
                 <div className="reveal-grid">
                   <div className="reveal-card in waiting">
                     <div className="reveal-square strike-mini roll-square">
                       <RollCoin points={null} spinning />
                       <BrandLoader />
-                      <span className="small muted">{phase === 'sign' ? 'Approve it in your wallet' : 'Striking'}</span>
+                      <span className="small muted">{shownAt <= 0 ? 'Approve it in your wallet' : 'Striking'}</span>
                     </div>
                   </div>
                   {err && <ErrorNote error={err} />}
                 </div>
               )}
 
-              {phase === 'done' && result && (
+              {landed && result && (
                 <>
                   <div className="reveal-grid">
                     <div className="reveal-card in landed">
