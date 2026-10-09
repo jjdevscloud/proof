@@ -8,11 +8,20 @@ type FakeTx = DecodedTx & { touches: string[] };
 
 // Fake chain: signatures per address and block order come from the tx list.
 function fakeRpc(txs: FakeTx[], finalized: number) {
+  const queried: string[] = [];
+  let tip = finalized;
   return {
-    finalizedSlot: async () => finalized,
-    signatures: async (address: string, from: number, to: number) =>
+    queried,
+    setTip: (n: number) => void (tip = n),
+    finalizedSlot: async () => tip,
+    // Chain state now: each account's last post observation.
+    multipleTokenAccounts: async (addresses: string[]) => addresses.map((a) => {
+      const last = txs.filter((t) => t.slot <= tip).flatMap((t) => t.post).filter((o) => o.account === a).pop();
+      return last ? { amount: last.balance, owner: last.owner } : null;
+    }),
+    signatures: async (address: string, from: number, to: number) => (queried.push(address),
       txs.filter((t) => t.touches.includes(address) && t.slot >= from && t.slot <= to)
-        .reverse().map((t) => ({ signature: t.signature, slot: t.slot, err: null })),
+        .reverse().map((t) => ({ signature: t.signature, slot: t.slot, err: null }))),
     transaction: async (sig: string) => txs.find((t) => t.signature === sig),
     blockOrder: async (slot: number) => txs.filter((t) => t.slot === slot).map((t) => t.signature),
   };
@@ -38,8 +47,9 @@ test('picks up a newly ranged account mid-window and keeps its order', async () 
   const f = new Follower(ledger, passthrough as any, fakeRpc(txs, 20) as any, cfg, 0);
   const applied: string[] = [];
   const n = await f.syncOnce((c) => applied.push(c.signature));
-  assert.deepEqual(applied, ['buy', 'b-sell', 'sellback']);
-  assert.equal(n, 3);
+  // b-old predates B's ranges; applying it is harmless (B is untracked until the buy).
+  assert.deepEqual(applied, ['b-old', 'buy', 'b-sell', 'sellback']);
+  assert.equal(n, 4);
   assert.deepEqual(ledger.holdings.get('B')!.ranges, [{ start: 0n, end: 60n }]);
   assert.equal(ledger.curve.returned, 10n);
   assert.equal(f.syncedSlot, 20);
@@ -81,4 +91,40 @@ test('a pending roll settles with the first block at or after its seed slot, bef
   await f.syncOnce((c) => seen.push(`${c.signature}:${c.changes.map((x) => x.kind).join(',')}`));
   assert.deepEqual(seen, ['seal-roll:seal,roll', 'seal-roll:rolled', 'list:list']);
   assert.deepEqual(ledger.envelopes.get('E1')!.roll, { ...rollResult(roll, 'seal-roll', 'HASH13'), signature: 'seal-roll' });
+});
+
+
+test('holders are not queried one by one; one that moved without the mint is found by its balance', async () => {
+  const txs: FakeTx[] = [
+    { slot: 5, signature: 'buy-a', touches: [CURVE, 'A'], pre: [], post: [obs('A', 100n)], events: [{ kind: 'curveBuy', to: 'A', amount: 100n }] },
+    { slot: 6, signature: 'buy-b', touches: [CURVE, 'B'], pre: [], post: [obs('B', 100n)], events: [{ kind: 'curveBuy', to: 'B', amount: 100n }] },
+  ];
+  const ledger = newLedger();
+  const rpc = fakeRpc(txs, 10);
+  const f = new Follower(ledger, passthrough as any, rpc as any, cfg, 0);
+  await f.syncOnce(() => {});
+  // Next window: A sends 40 with a plain transfer (touches only A and X, not the mint or the curve).
+  txs.push({ slot: 15, signature: 'a-plain', touches: ['A'], pre: [obs('A', 100n)], post: [obs('A', 60n)], events: [{ kind: 'transfer', from: 'A', to: 'X', amount: 40n }] });
+  rpc.queried.length = 0;
+  rpc.setTip(20);
+  const applied: string[] = [];
+  await f.syncOnce((c) => applied.push(c.signature));
+  assert.deepEqual(applied, ['a-plain']);
+  assert.deepEqual(ledger.holdings.get('A')!.ranges, [{ start: 0n, end: 60n }]);
+  assert.ok(rpc.queried.includes('A'), 'A changed, so its history was fetched');
+  assert.ok(!rpc.queried.includes('B'), 'B did not change, so it was not queried');
+});
+
+test('watches the mint: a transfer naming the mint is applied without any holder query', async () => {
+  const txs: FakeTx[] = [
+    { slot: 5, signature: 'buy-a', touches: [CURVE, 'A'], pre: [], post: [obs('A', 100n)], events: [{ kind: 'curveBuy', to: 'A', amount: 100n }] },
+    { slot: 6, signature: 'a-swap', touches: ['A', 'MINT'], pre: [obs('A', 100n)], post: [obs('A', 70n)], events: [{ kind: 'transfer', from: 'A', to: 'POOL', amount: 30n }] },
+  ];
+  const ledger = newLedger();
+  const rpc = fakeRpc(txs, 10);
+  const f = new Follower(ledger, passthrough as any, rpc as any, { ...cfg, mint: 'MINT' }, 0);
+  const applied: string[] = [];
+  await f.syncOnce((c) => applied.push(c.signature));
+  assert.deepEqual(applied, ['buy-a', 'a-swap']);
+  assert.deepEqual(ledger.holdings.get('A')!.ranges, [{ start: 0n, end: 70n }]);
 });

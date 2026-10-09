@@ -1,10 +1,15 @@
 // Feeds finalized transactions to the ledger in (slot, block position) order (SPEC §8.1, §8.3).
 //
-// Only a few addresses matter: the curve token account, the vault program, the reveal authority,
-// and accounts that currently hold rare ranges. When a transaction gives a new account ranges,
-// that account's later transactions in the current window are fetched and merged into the queue
-// before anything after it is applied. Its earlier history is irrelevant (it held no ranges).
-import type { Ledger, TxChanges } from './ledger.ts';
+// Per window it fetches the signatures of a few fixed addresses: the curve token account, the
+// vault program, the reveal authority, the roll treasury and the $PROOF mint (every transferChecked,
+// swap or burn of the token names the mint). Holders are not queried one by one: their on-chain
+// balances and owners are read in batches and compared with the ledger, and only accounts that
+// differ are asked for their history. Accounts that receive their first ranges in the window (curve
+// buyers) have their window history fetched too. Transactions are fetched in parallel and applied
+// strictly in chain order. Applying an extra transaction is harmless; missing one that touches a
+// ranged account is not, and the ledger halts on the next balance mismatch if that ever happens.
+import type { DecodedTx, Ledger, TxChanges } from './ledger.ts';
+import { balance } from './ledger.ts';
 import type { Decoder } from './decoder.ts';
 import type { Rpc } from './rpc.ts';
 
@@ -13,10 +18,12 @@ export type FollowerConfig = {
   vaultProgramId: string;
   revealAuthority: string;
   maxWindowSlots: number;
+  mint?: string;
   rollTreasury?: string; // every roll pays it, so its transactions include every roll
+  rpcConcurrency?: number; // parallel RPC requests (default 8); the client backs off on 429
 };
 
-type Queued = { signature: string; slot: number };
+const BATCH = 100; // getMultipleAccounts limit
 
 export class Follower {
   syncedSlot: number;
@@ -25,7 +32,6 @@ export class Follower {
   private decoder: Decoder;
   private rpc: Rpc;
   private config: FollowerConfig;
-  private blockOrders = new Map<number, string[]>();
 
   constructor(ledger: Ledger, decoder: Decoder, rpc: Rpc, config: FollowerConfig, syncedSlot: number) {
     this.ledger = ledger;
@@ -35,9 +41,39 @@ export class Follower {
     this.syncedSlot = syncedSlot;
   }
 
-  private watched(): Set<string> {
-    const extra = this.config.rollTreasury ? [this.config.rollTreasury] : [];
-    return new Set([this.config.curveTokenAccount, this.config.vaultProgramId, this.config.revealAuthority, ...extra, ...this.ledger.holdings.keys()]);
+  private fixed(): string[] {
+    const c = this.config;
+    return [c.curveTokenAccount, c.vaultProgramId, c.revealAuthority, c.rollTreasury, c.mint].filter((a): a is string => !!a);
+  }
+
+  // Runs `fn` over `items` with at most `rpcConcurrency` in flight.
+  private async pool<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<R[]> {
+    const out: R[] = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(this.config.rpcConcurrency ?? 8, items.length) }, worker));
+    return out;
+  }
+
+  // Ranged accounts whose on-chain balance or owner differs from the ledger: they moved in a
+  // transaction the fixed addresses did not show (e.g. a plain transfer without the mint).
+  private async changedHolders(): Promise<string[]> {
+    const accounts = [...this.ledger.holdings.keys()];
+    const batches: string[][] = [];
+    for (let i = 0; i < accounts.length; i += BATCH) batches.push(accounts.slice(i, i + BATCH));
+    const results = await this.pool(batches, (b) => this.rpc.multipleTokenAccounts(b));
+    const changed: string[] = [];
+    batches.forEach((b, bi) => b.forEach((account, i) => {
+      const h = this.ledger.holdings.get(account)!;
+      const chain = results[bi][i];
+      if (!chain || chain.amount !== balance(h) || chain.owner !== h.owner) changed.push(account);
+    }));
+    return changed;
   }
 
   // Processes one window up to the finalized slot. Returns the number of transactions applied.
@@ -48,52 +84,55 @@ export class Follower {
     const to = Math.min(finalized, from + this.config.maxWindowSlots - 1);
     if (to < from) return 0;
 
-    const queue = new Map<string, Queued>();
-    const seen = new Set<string>();
-    const enqueue = async (address: string, fromSlot: number): Promise<Queued[]> => {
-      const added: Queued[] = [];
-      for (const s of await this.rpc.signatures(address, fromSlot, to)) {
-        if (s.err !== null || seen.has(s.signature) || queue.has(s.signature)) continue;
-        const q = { signature: s.signature, slot: s.slot };
-        queue.set(s.signature, q);
-        added.push(q);
+    const slots = new Map<string, number>(); // signature -> slot
+    const queried = new Set<string>();
+    const collect = async (addresses: string[]) => {
+      const fresh = addresses.filter((a) => !queried.has(a));
+      fresh.forEach((a) => queried.add(a));
+      for (const list of await this.pool(fresh, (a) => this.rpc.signatures(a, from, to))) {
+        for (const s of list) if (s.err === null) slots.set(s.signature, s.slot);
       }
-      return added;
     };
-    for (const a of this.watched()) await enqueue(a, from);
+    const decoded = new Map<string, DecodedTx | null>();
+    const fetchAll = async () => {
+      const missing = [...slots.keys()].filter((s) => !decoded.has(s));
+      const txs = await this.pool(missing, (s) => this.rpc.transaction(s));
+      missing.forEach((s, i) => decoded.set(s, this.decoder.decode(txs[i])));
+    };
+
+    await collect(this.fixed());
+    await collect(await this.changedHolders());
+    await fetchAll();
+    // Accounts that receive ranges in this window: their window history matters from then on.
+    const buyers = new Set<string>();
+    for (const d of decoded.values()) {
+      for (const ev of d?.events ?? []) if (ev.kind === 'curveBuy' && !this.ledger.holdings.has(ev.to)) buyers.add(ev.to);
+    }
+    await collect([...buyers]);
+    await fetchAll();
+
+    // Chain order: by slot, then position in the block for slots with several transactions.
+    const bySlot = new Map<number, string[]>();
+    for (const [sig, slot] of slots) bySlot.set(slot, [...(bySlot.get(slot) ?? []), sig]);
+    const multi = [...bySlot].filter(([, sigs]) => sigs.length > 1).map(([slot]) => slot);
+    const orders = new Map<number, Map<string, number>>();
+    (await this.pool(multi, (slot) => this.rpc.blockOrder(slot))).forEach((order, i) => {
+      orders.set(multi[i], new Map(order.map((s, pos) => [s, pos])));
+    });
+    const sequence = [...slots].sort(([a, sa], [b, sb]) => sa - sb || (orders.get(sa)?.get(a) ?? 0) - (orders.get(sb)?.get(b) ?? 0));
 
     let applied = 0;
-    while (queue.size) {
-      const next = await this.earliest(queue);
-      queue.delete(next.signature);
-      seen.add(next.signature);
+    for (const [sig, slot] of sequence) {
       // Rolls whose seed block is this transaction's block or earlier settle before it.
-      await this.settleRolls(next.slot, onChanges);
-
-      const before = new Set(this.ledger.holdings.keys());
-      const raw = await this.rpc.transaction(next.signature);
-      const decoded = this.decoder.decode(raw);
-      if (!decoded) continue;
-      onChanges(this.ledger.applyTx(decoded));
+      await this.settleRolls(slot, onChanges);
+      const d = decoded.get(sig);
+      if (!d) continue;
+      onChanges(this.ledger.applyTx(d));
       applied++;
-
-      for (const a of this.ledger.holdings.keys()) {
-        if (before.has(a)) continue;
-        const added = await enqueue(a, next.slot);
-        // The new account's transactions earlier in this slot predate its ranges: irrelevant.
-        if (added.some((q) => q.slot === next.slot)) {
-          const order = await this.order(next.slot);
-          const pos = order.indexOf(next.signature);
-          for (const q of added) {
-            if (q.slot === next.slot && order.indexOf(q.signature) < pos) queue.delete(q.signature);
-          }
-        }
-      }
     }
     await this.settleRolls(to, onChanges);
     this.ledger.passedSlot(to);
     this.syncedSlot = to;
-    this.blockOrders.clear();
     return applied;
   }
 
@@ -104,24 +143,5 @@ export class Follower {
       if (!block || block.slot > slot) continue; // seed block not finalized yet
       onChanges(this.ledger.settleRoll(env.address, block.slot, block.blockhash));
     }
-  }
-
-  private async earliest(queue: Map<string, Queued>): Promise<Queued> {
-    let min = Infinity;
-    for (const q of queue.values()) min = Math.min(min, q.slot);
-    const sameSlot = [...queue.values()].filter((q) => q.slot === min);
-    if (sameSlot.length === 1) return sameSlot[0];
-    const order = await this.order(min);
-    sameSlot.sort((a, b) => order.indexOf(a.signature) - order.indexOf(b.signature));
-    return sameSlot[0];
-  }
-
-  private async order(slot: number): Promise<string[]> {
-    let o = this.blockOrders.get(slot);
-    if (!o) {
-      o = await this.rpc.blockOrder(slot);
-      this.blockOrders.set(slot, o);
-    }
-    return o;
   }
 }

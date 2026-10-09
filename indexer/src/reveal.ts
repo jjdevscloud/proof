@@ -15,6 +15,21 @@ export type RevealData = {
 
 export class RevealError extends Error {}
 
+// The reveal file's exact bytes. Everything in it is public, so the operator's tool and every
+// indexer build byte-identical files (and the same hash) independently.
+export function buildRevealBytes(rulesText: string, seedTargetSlot: number, seedSlot: number, blockhash: string, eligibleStrikes: number): Buffer {
+  const data: RevealData = {
+    version: 1,
+    rules: rulesText,
+    seedTargetSlot,
+    seedSlot,
+    blockhash,
+    eligibleStrikes,
+    strikes: deriveTraits(parseRules(rulesText), blockhash, eligibleStrikes),
+  };
+  return Buffer.from(JSON.stringify(data));
+}
+
 export function sha256(data: Uint8Array | string): Buffer {
   return createHash('sha256').update(data).digest();
 }

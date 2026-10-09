@@ -68,6 +68,12 @@ await step('14 migrate 1,000,000 curve -> pool', () => send([migrateIx(payer.pub
 // Reveal: wait until the indexer has passed the seed point, then derive the traits from the first
 // block at or after it (what ops/make-reveal.ts does on mainnet) and post the reveal memo.
 await step('15 reveal from the public seed block', async () => {
+  // EXTERNAL_REVEAL=1: someone else runs ops/make-reveal.ts --post; wait until the indexer has it.
+  if (process.env.EXTERNAL_REVEAL) {
+    console.log('  waiting for an external reveal (ops/make-reveal.ts --post) ...');
+    while (!(await (await fetch(`${INDEXER_URL}/reveal`)).json()).revealed) await new Promise((r) => setTimeout(r, 2000));
+    return 'external';
+  }
   let status: any;
   for (let i = 0; ; i++) {
     status = await (await fetch(`${INDEXER_URL}/reveal`)).json();
