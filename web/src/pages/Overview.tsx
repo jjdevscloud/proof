@@ -1,7 +1,8 @@
 import { HeroWord } from '../components/HeroWord.tsx';
 import { ScrollLines } from '../components/ScrollLines.tsx';
 import { Mechanisms } from '../components/Mechanisms.tsx';
-import { TraitsTable } from '../components/TraitsTable.tsx';
+import { HowItWorks } from '../components/HowItWorks.tsx';
+import { Faq } from '../components/Faq.tsx';
 import { VerifyBox } from '../components/Closer.tsx';
 import { BlockField } from '../components/BlockField.tsx';
 
@@ -35,7 +36,9 @@ export function Overview() {
 
       <Mechanisms />
 
-      <TraitsTable />
+      <HowItWorks />
+
+      <Faq />
 
       <ScrollLines
         className="verify"
@@ -43,8 +46,6 @@ export function Overview() {
         link={{ phrase: 'following steps', href: `${import.meta.env.BASE_URL}Sequents_Whitepaper.pdf#page=8` }}
         after={<VerifyBox />}
       />
-
-
 
       <section className="closer"><BlockField /></section>
     </>

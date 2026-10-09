@@ -20,6 +20,29 @@ export const ICONS: Record<string, string[]> = {
   clipped: ['..#####..k...kk', '.######...k.kkk', '#######....k...', '######....k.kkk', '#######..k...kk', '#######........', '#########......', '.#######.......', '..#####........'],
   // A single zigzag crack running through it.
   diecrack: ['..###.#..', '.####.##.', '####.####', '###.#####', '####.####', '#####.###', '####.####', '.##.####.', '..#.###..'],
+  // Rolled tiers (the roll, SPEC 4.5), each named after a minting term.
+  // Hoard: a pile of coins punched in the coin.
+  hoard: ['..#####..', '.#######.', '#########', '####.####', '###.#.###', '##.#.#.##', '#########', '.#######.', '..#####..'],
+  // Pattern: a trial design, a checker struck in the coin.
+  pattern: ['..#####..', '.#######.', '###.#.###', '##.#.#.##', '###.#.###', '##.#.#.##', '###.#.###', '.#######.', '..#####..'],
+  // Die Trial: the square of the die.
+  dietrial: ['..#####..', '.#######.', '##.....##', '##.###.##', '##.###.##', '##.###.##', '##.....##', '.#######.', '..#####..'],
+  // Overstrike: the ring of the old coin showing through.
+  overstrike: ['..#####..', '.#######.', '###...###', '##.###.##', '##.###.##', '##.###.##', '###...###', '.#######.', '..#####..'],
+  // Restrike: struck again from the old die, a turning arrow.
+  restrike: ['..#####..', '.#######.', '###...###', '##.###.##', '##.###.##', '##.##..##', '###.#..##', '.#######.', '..#####..'],
+  // Second Strike: a 2.
+  secondstrike: ['..#####..', '.#######.', '###...###', '##.###.##', '####..###', '###.#####', '##.....##', '.#######.', '..#####..'],
+  // Recoinage: melted down, a drop.
+  recoinage: ['..#####..', '.#######.', '####.####', '####.####', '###...###', '##.....##', '###...###', '.#######.', '..#####..'],
+  // Reissue: issued again, a plus.
+  reissue: ['..#####..', '.#######.', '####.####', '####.####', '##.....##', '####.####', '####.####', '.#######.', '..#####..'],
+  // Mint Run: a run of marks.
+  mintrun: ['..#####..', '.#######.', '#########', '##.#.#.##', '##.#.#.##', '##.#.#.##', '#########', '.#######.', '..#####..'],
+  // Assay: the scales that test the metal.
+  assay: ['..#####..', '.#######.', '##.....##', '##.#.#.##', '####.####', '####.####', '###...###', '.#######.', '..#####..'],
+  // Coal: a single dot, green for Common like Common Date.
+  coal: ['..#####..', '.#######.', '#########', '#########', '####.####', '#########', '#########', '.#######.', '..#####..'],
 };
 
 // Every icon is drawn in the same square, so coins and blocks come out the same size everywhere.
@@ -77,3 +100,10 @@ export function traitShare(trait: string): string {
   const p = (n / 794) * 100;
   return `${p < 1 ? p.toFixed(2) : p.toFixed(1)}%`;
 }
+
+// A rolled tier's name to its icon. The colour comes from the tier its points put it in.
+const ROLL_ICONS: Record<string, string> = {
+  'Hoard': 'hoard', 'Pattern': 'pattern', 'Die Trial': 'dietrial', 'Overstrike': 'overstrike', 'Restrike': 'restrike',
+  'Second Strike': 'secondstrike', 'Recoinage': 'recoinage', 'Reissue': 'reissue', 'Mint Run': 'mintrun', 'Assay': 'assay', 'Coal': 'coal',
+};
+export const rollIconName = (name: string | undefined) => (name ? ROLL_ICONS[name] : undefined);

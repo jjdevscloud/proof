@@ -46,16 +46,21 @@ export function Desk() {
       <div className="page-head">
         <div>
           <h1>Collector desk</h1>
-          <p className="muted page-sub">
-            Sealed envelopes for sale. You buy the envelope: the tokens never leave the vault, so their rarity stays intact.
-            Every listing is checked against the chain in your browser before you can buy.
-          </p>
+          {/* DRAFT shorter line, awaiting Harriet's approval. The full version is in the pop-up checks. */}
+          <p className="muted page-sub">Sealed envelopes for sale. The tokens never leave the vault, so their rarity stays intact.</p>
         </div>
+        {/* The two headline numbers, in the same square as on Strikes and Rolls. DRAFT labels. */}
+        {data && (
+          <div className="roll-stat-box">
+            <div><strong>{data.length.toLocaleString()}</strong><span className="muted">Listed now</span></div>
+            <div><strong>{data.length ? `${sol(data.reduce((m, e) => (BigInt(e.price) < BigInt(m) ? e.price : m), data[0].price))}` : '0'}</strong><span className="muted">Floor, SOL</span></div>
+          </div>
+        )}
       </div>
       {/* Search, as on the Strikes page. DRAFT wording, awaiting Harriet's approval. */}
-      <section className="strike-search">
+      <section className="strike-search top-search">
         <form className="search-row" onSubmit={(e) => e.preventDefault()}>
-          <input placeholder="Search by Strike number, envelope or seller" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search listings" />
+          <input placeholder="Search by Strike number, envelope or wallet" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search listings" />
           <FilterMenu label="Rarity" options={[0, 1, 2, 3].map((t) => ({ value: t, label: TIER_NAMES[t], mark: <i className={`tier-dot t${t}`} />, note: tierShare(t) }))} chosen={tiers} onToggle={(v) => toggle(tiers, setTiers, v)} />
           <FilterMenu label="Trait" options={TRAIT_NAMES.map((n) => ({ value: n, label: n, mark: <TraitIcon trait={n} />, note: traitShare(n), sep: n === 'Double Die', heading: n === 'Genesis' ? 'Date, set by when it was bought' : n === 'Double Die' ? 'Error, assigned at the reveal' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
           <FilterMenu label="Price" options={[{ value: 'low' as Order, label: 'Lowest first' }, { value: 'high' as Order, label: 'Highest first' }]} chosen={order} onToggle={(v) => setOrder(order[0] === v ? [] : [v])} />

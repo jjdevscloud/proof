@@ -972,3 +972,281 @@ main.container:has(.checkable) { padding-bottom: 48px; }
   stroke: var(--frame);
   stroke-width: 1px;
 }
+
+/* Rolled tier symbols: the same pixel icons as the traits, one square per symbol so every tier draws at one pixel size. */
+.roll-coin.roll-icon svg.pi { width: var(--size); height: var(--size); fill: none; }
+.roll-icon .pi-t { fill: var(--tier); }
+.roll-badge .roll-coin { --size: 14px; vertical-align: -3px; margin-right: 6px; }
+
+/* Coal is Common, so it takes the Common green like Common Date, in the chart as in its symbol. */
+.roll-curve .rc-coal { fill: var(--t0); }
+.t0-text { color: var(--t0); }
+
+/* ---- Traits page: the same panels and tables as the Strikes page ---- */
+.bands { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--frame); }
+.band { display: flex; align-items: center; gap: 12px; padding: 18px 0; }
+.band + .band { padding-left: 20px; border-left: 1px solid var(--frame); }
+.band .pi-t, .traits-table .pi-t { fill: var(--tier); }
+.band .muted { margin-left: auto; padding-right: 20px; }
+.traits-table td.trait-icon { width: 72px; }
+@media (max-width: 900px) { .bands { grid-template-columns: repeat(2, 1fr); } .band:nth-child(3) { border-left: 0; padding-left: 0; } }
+
+/* ---- How it works on the overview: one line left to right, a square at each step ---- */
+.how { max-width: 1100px; margin: 0 auto 160px; text-align: center; }
+.how h2 { margin-bottom: 14px; }
+.how > p { margin: 0 auto 48px; max-width: 62ch; color: var(--muted); }
+.how ol { list-style: none; margin: 0; padding: 0; text-align: left; }
+.how li { opacity: 0; transform: translateY(8px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.how li.in { opacity: 1; transform: none; }
+.how-more { margin-top: 48px; }
+@media (prefers-reduced-motion: reduce) { .how li { opacity: 1; transform: none; transition: none; } }
+
+/* 2: one line left to right, a square at each step */
+.how-flow { display: grid; grid-template-columns: repeat(4, 1fr); }
+.how-flow li { display: flex; flex-direction: column; gap: 14px; padding-right: 32px; }
+.how-node { position: relative; height: 12px; display: block; }
+.how-node::before { content: ''; position: absolute; left: 0; right: -32px; top: 5.5px; border-top: 1px solid var(--ink); }
+.how-flow li:last-child .how-node::before { right: auto; width: 12px; }
+.how-node i { position: absolute; left: 0; top: 0; width: 12px; height: 12px; background: var(--ink); }
+.how-flow li:last-child .how-node i { background: var(--purple); }
+
+@media (max-width: 720px) {
+  .how-flow { grid-template-columns: 1fr; gap: 28px; }
+  .how-flow li { padding-right: 0; }
+  .how-node::before { right: 0; }
+}
+
+/* How it works, set in a frame like the hero so it stands out: larger titles, bigger squares on the line. */
+.how-frame { padding: 56px 56px 52px; }
+.how-flow strong { font-size: 18px; line-height: 1.2; font-weight: 500; letter-spacing: 0.4px; }
+.how-n { color: var(--muted); }
+.how-node { height: 16px; }
+.how-node::before { top: 7.5px; }
+.how-node i { width: 16px; height: 16px; }
+.how-flow li:last-child .how-node::before { width: 16px; }
+.how-flow .muted { max-width: 30ch; line-height: 1.8; }
+@media (max-width: 720px) { .how-frame { padding: 32px 20px; } }
+
+/* ---- Questions: one centred column, a plus on each that opens the answer ---- */
+.faq { max-width: 760px; margin: 0 auto 160px; text-align: center; }
+.faq h2 { margin-bottom: 36px; }
+.faq ul { list-style: none; margin: 0; padding: 0; text-align: left; border-top: 1px solid var(--ink); }
+.faq li { border-bottom: 1px solid var(--frame); }
+.faq li:last-child { border-bottom-color: var(--ink); }
+.faq button { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 0; cursor: pointer; font: inherit; color: var(--ink); text-transform: uppercase; }
+.faq button:focus-visible { outline: 1px solid var(--purple); outline-offset: 2px; }
+.faq-plus { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--ink); stroke-width: 1.5; transition: transform 0.25s ease; }
+.faq button:hover .faq-plus { stroke: var(--purple); }
+.faq li.open .faq-plus { transform: rotate(45deg); stroke: var(--purple); }
+.faq li p { margin: 0 0 22px; max-width: 64ch; color: var(--muted); line-height: 1.9; }
+.how { max-width: none; }
+
+/* Rules box 6: the curve traits on the left, the rolled tiers on the right, as two grids of symbols in
+   the same frame as the other boxes' pictures. Names show on hover. */
+.work > .two-rare { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-content: center; }
+.two-rare-head { display: block; color: var(--muted); padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--ink); }
+.two-rare ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.two-rare li { display: block; line-height: 0; }
+.two-rare .pi-t { fill: var(--tier); }
+.work-modal .two-rare { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; width: 100%; }
+
+/* ---- Glossary: a search box, then the terms A to Z under their letters ---- */
+.glossary-search { width: 100%; margin-bottom: 28px; }
+.glossary-group { display: grid; grid-template-columns: 48px 1fr; border-top: 1px solid var(--ink); }
+.glossary-letter { padding: 16px 0; }
+.glossary dl { margin: 0; }
+.glossary-row { display: grid; grid-template-columns: 220px 1fr; gap: 24px; padding: 16px 0; border-bottom: 1px solid var(--frame); }
+.glossary-group .glossary-row:last-child { border-bottom: 0; }
+.glossary dt { color: var(--ink); }
+.glossary dd { margin: 0; line-height: 1.8; max-width: 72ch; }
+@media (max-width: 720px) { .glossary-group { grid-template-columns: 32px 1fr; } .glossary-row { grid-template-columns: 1fr; gap: 4px; } }
+
+/* How it works as you scroll: the section holds still, a grey track runs under the steps and the black
+   line draws over it left to right. Squares start as outlines and fill as the line reaches them. */
+.how-scroll { height: 340vh; margin-bottom: 40px; }
+.how-stage { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+.how li { transition: opacity 0.45s ease, transform 0.45s ease; transition-delay: 0s !important; }
+.how li .how-n, .how li strong, .how li > .muted { opacity: 0.18; transition: opacity 0.45s ease; }
+.how li { opacity: 1; transform: none; }
+.how li.in .how-n, .how li.in strong, .how li.in > .muted { opacity: 1; }
+.how-node::before { border-top-color: var(--frame); }
+.how-node::after { content: ''; position: absolute; left: 0; top: 7.5px; width: calc((100% + 32px) * var(--fill, 0)); border-top: 1px solid var(--ink); }
+.how-flow li:last-child .how-node::after { display: none; }
+.how-node i { background: var(--bg); box-shadow: inset 0 0 0 1px var(--ink); transition: background 0.3s ease; z-index: 1; }
+.how li.in .how-node i { background: var(--ink); }
+.how-flow li:last-child .how-node i { background: var(--bg); box-shadow: inset 0 0 0 1px var(--purple); }
+.how-flow li:last-child.in .how-node i { background: var(--purple); }
+@media (prefers-reduced-motion: reduce) { .how li .how-n, .how li strong, .how li > .muted { opacity: 1; } }
+@media (max-width: 720px) { .how-node::after { display: none; } .how-node::before { border-top-color: var(--ink); } }
+
+/* Inside the held stage: keep the subtitle grey and the button its own size. */
+.how-stage { align-items: center; }
+.how-stage > p { margin: 0 auto 48px; max-width: 62ch; color: var(--muted); }
+.how-stage > .frame { align-self: stretch; }
+/* Roll's die: outlined with dark pips, then solid black with white pips once the line arrives. */
+.how-die { position: absolute; left: 0; top: 0; width: 16px; height: 16px; z-index: 1; }
+.how-die rect:first-child { fill: var(--bg); stroke: var(--ink); stroke-width: 1; transition: fill 0.3s ease; }
+.how-die .pip { fill: var(--ink); transition: fill 0.3s ease; }
+.how li.in .how-die rect:first-child { fill: var(--ink); }
+.how li.in .how-die .pip { fill: var(--bg); }
+
+/* Under the questions: a small grey line and a button to ask on X. */
+.faq-more { margin-top: 44px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.faq-more p { margin: 0; }
+
+
+/* Buy's two ways in, as two outlined tags under its line. Seal, list or sell and roll work for both. */
+.how-ways { display: flex; flex-wrap: wrap; gap: 8px; }
+.how-ways em { font-style: normal; border: 1px solid var(--ink); padding: 2px 8px; }
+.how li:not(.in) .how-ways { opacity: 0.18; }
+.how-ways { transition: opacity 0.45s ease; }
+
+/* How it works as two paths on one grid: a label column, then the four steps. Titles on top, a line for
+   each path (on the curve stops at List or sell, after the curve goes on to Roll), the words below. */
+.how-grid { display: grid; grid-template-columns: 150px repeat(4, 1fr); column-gap: 0; row-gap: 22px; text-align: left; align-items: center; }
+.how-head { display: flex; flex-direction: column; gap: 10px; padding-right: 32px; }
+.how-head strong { font-size: 18px; line-height: 1.2; font-weight: 500; letter-spacing: 0.4px; }
+.how-track { color: var(--muted); padding-right: 16px; transition: color 0.45s ease; }
+.how-track.in { color: var(--ink); }
+.how-grid .how-node { display: block; position: relative; height: 16px; }
+.how-grid .how-node::before { content: ''; position: absolute; left: 0; right: 0; top: 7.5px; border-top: 1px solid var(--frame); }
+.how-grid .how-node::after { content: ''; position: absolute; left: 0; top: 7.5px; width: calc(100% * var(--fill, 0)); border-top: 1px solid var(--ink); }
+.how-grid .how-node[data-last]::before, .how-grid .how-node[data-last]::after { display: none; }
+.how-grid .how-node i { position: absolute; left: 0; top: 0; width: 16px; height: 16px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--ink); z-index: 1; transition: background 0.3s ease; }
+.how-grid .how-node.in i { background: var(--ink); }
+.how-grid .how-node.in .how-die rect:first-child { fill: var(--ink); }
+.how-grid .how-node.in .how-die .pip { fill: var(--bg); }
+.how-text { color: var(--muted); max-width: 30ch; line-height: 1.8; align-self: start; padding-right: 32px; opacity: 0.18; transition: opacity 0.45s ease; }
+.how-head .how-n, .how-head strong { opacity: 0.18; transition: opacity 0.45s ease; }
+.how-head.in .how-n, .how-head.in strong, .how-text.in { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .how-head .how-n, .how-head strong, .how-text { opacity: 1; } }
+@media (max-width: 720px) {
+  .how-grid { grid-template-columns: 1fr; row-gap: 12px; }
+  .how-grid > span:empty, .how-grid .how-node { display: none; }
+  .how-head .how-n, .how-head strong, .how-text { opacity: 1; }
+}
+
+/* On the curve is the main path: bold label, 2px line, full squares. After the curve is the second way in:
+   a grey label, a thin grey line and smaller grey squares (the die keeps its size so it still reads). */
+.how-track:not(.minor) { font-weight: 600; }
+.how-grid .how-node:not(.minor)::before, .how-grid .how-node:not(.minor)::after { border-top-width: 2px; top: 7px; }
+.how-track.minor, .how-track.minor.in { color: var(--muted); }
+.how-grid .how-node.minor { height: 10px; }
+.how-grid .how-node.minor::before { top: 4.5px; }
+.how-grid .how-node.minor::after { top: 4.5px; border-top-color: var(--muted); }
+.how-grid .how-node.minor i { width: 10px; height: 10px; box-shadow: inset 0 0 0 1px var(--muted); }
+.how-grid .how-node.minor.in i { background: var(--muted); }
+.how-grid .how-node.minor .how-die { top: -3px; }
+.how-grid .how-node.minor .how-die rect:first-child { stroke: var(--muted); }
+.how-grid .how-node.minor .how-die .pip { fill: var(--muted); }
+.how-grid .how-node.minor.in .how-die rect:first-child { fill: var(--muted); }
+.how-grid .how-node.minor.in .how-die .pip { fill: var(--bg); }
+.how-track.minor { opacity: 0.35; transition: opacity 0.45s ease; }
+.how-track.minor.in { opacity: 1; }
+
+/* The questions come in one by one as the list scrolls into view, like the table rows. */
+.faq li.step { opacity: 0; transform: translateY(6px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.faq li.step.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .faq li.step { opacity: 1; transform: none; transition: none; } }
+
+/* Traits page: which stage each table belongs to, above its title. */
+.traits-stage-label { display: inline-block; align-self: flex-start; border: 1px solid var(--ink); padding: 1px 8px; margin-bottom: 10px; }
+
+/* Rarity bands: each band's share of all Strikes, between its name and its points. */
+.band-share { color: var(--ink); }
+/* Each band on two lines: coin, name and share of Strikes on top, the points under it. */
+.band { flex-wrap: wrap; row-gap: 4px; }
+.band .band-share { margin-left: auto; padding-right: 20px; }
+.band .muted { flex-basis: 100%; margin-left: 0; padding-left: 30px; }
+.tab.on .tab-icon rect[fill="none"] { stroke: var(--purple); }
+
+/* Nav: a divider and a green Live dot before the live $PROOF pages (Strikes, Desk, My wallet). */
+.nav { align-items: center; }
+.nav-live { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); padding-left: 28px; border-left: 1px solid var(--ink); }
+.nav-live i { width: 6px; height: 6px; background: var(--green); display: block; }
+@media (max-width: 900px) { .nav-live { padding-left: 0; border-left: 0; border-top: 1px solid var(--frame); padding-top: 14px; width: 100%; } }
+
+/* A small grey line above a title saying which stage it belongs to: On the curve or After the curve. */
+.stage-eyebrow { display: block; color: var(--muted); margin-bottom: 4px; }
+
+/* The five rarest Strikes as feature cards in one row, each opening its Strike. */
+.strike-feature { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--ink); }
+.strike-feature li + li { border-left: 1px solid var(--frame); }
+.strike-feature li { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 18px 20px; }
+.strike-feature .strike-title { color: var(--ink); }
+.feature-tier { color: var(--tier); }
+.strike-feature li.t3 .feature-tier { color: var(--ink); font-weight: 700; }
+@media (max-width: 900px) { .strike-feature { grid-template-columns: 1fr 1fr; } .strike-feature li + li { border-left: 0; } .strike-feature li { border-bottom: 1px solid var(--frame); } }
+
+/* The 5 rarest Strikes: a frame whose 2px border is a strip of the four rarity colours (green, blue,
+   purple, black) sliding round slowly, like the Check my wallet button. Solid colours, hard edges. */
+.feature-frame { position: relative; padding: 2px; margin: 0 0 64px; overflow: hidden; isolation: isolate; }
+.feature-frame::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 4000px; height: 4000px; margin: -2000px 0 0 -2000px; z-index: -1;
+  background: conic-gradient(var(--t0) 0 25%, var(--t1) 25% 50%, var(--t2) 50% 75%, var(--t3) 75% 100%);
+  animation: feature-spin 9s linear infinite;
+}
+@keyframes feature-spin { to { transform: rotate(360deg); } }
+.feature-inner { background: var(--bg); padding: 40px 40px 32px; }
+.feature-frame .strike-feature { border-top: 1px solid var(--ink); }
+.strike-feature li { transition: transform 0.2s ease; }
+.strike-feature li:hover { transform: translateY(-3px); }
+@media (prefers-reduced-motion: reduce) { .feature-frame::before { animation: none; } .strike-feature li:hover { transform: none; } }
+@media (max-width: 720px) { .feature-inner { padding: 24px 16px; } }
+
+/* Find a Strike as a plain bar under the Strikes title, no container. */
+.top-search { margin: 0 0 40px; }
+/* Rolls key: a picked rarity keeps its colour in the chart and its rows in the table; the rest go plain grey. */
+.roll-page[data-focus] .roll-curve rect[data-band] { fill: #dcdcdc; stroke: none; }
+.roll-page[data-focus="0"] .roll-curve rect[data-band="0"].rc-coal { fill: var(--t0); }
+.roll-page[data-focus="1"] .roll-curve rect[data-band="1"]:not(.rc-gone):not(.rc-none) { fill: var(--t1); }
+.roll-page[data-focus="2"] .roll-curve rect[data-band="2"]:not(.rc-gone):not(.rc-none) { fill: var(--t2); }
+.roll-page[data-focus="3"] .roll-curve rect[data-band="3"]:not(.rc-gone):not(.rc-none) { fill: var(--t3); }
+.roll-page[data-focus="0"] tr[data-band]:not([data-band="0"]) td,
+.roll-page[data-focus="1"] tr[data-band]:not([data-band="1"]) td,
+.roll-page[data-focus="2"] tr[data-band]:not([data-band="2"]) td,
+.roll-page[data-focus="3"] tr[data-band]:not([data-band="3"]) td { color: #c8c8c8; }
+
+/* The roll tables match every other table on the site: 11px type, the same padding and top rules, plain
+   black rarity words, and symbols at the same pixel size as the traits tables. */
+.table.odds { font-size: inherit; }
+.table.odds th { padding: 0 16px 14px 0; border-bottom: 0; }
+.table.odds td { padding: 10px 16px 10px 0; border-bottom: 0; border-top: 1px solid var(--soft); }
+.table.odds td[class*="-text"] { color: var(--ink); font-weight: 400; }
+.table.odds .roll-coin { --size: 30px; margin: -6px 2px -6px -6px; vertical-align: middle; }
+.feed .roll-coin.roll-icon { --size: 24px; }
+
+/* Rolls page: the two headline numbers in a square at the top right, large so they are seen. */
+.roll-stat-box { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--ink); }
+.roll-stat-box > div { display: flex; flex-direction: column; gap: 6px; padding: 18px 28px; min-width: 170px; }
+.roll-stat-box > div + div { border-left: 1px solid var(--frame); }
+.roll-stat-box strong { font-size: 32px; line-height: 1; font-weight: 500; letter-spacing: 0; }
+@media (max-width: 720px) { .roll-stat-box { width: 100%; } .roll-stat-box > div { min-width: 0; padding: 14px 16px; } }
+
+/* Latest rolls cards: the roll symbol at the same size as the Strike coins in the 5 rarest. */
+.strike-feature .roll-coin { --size: 40px; margin: -4px 0 -4px -6px; }
+.strike-feature li.t0 .feature-tier { color: var(--t0); }
+
+/* The headline squares on Strikes and Rolls: compact, so the page title sits at the same height on both. */
+.page-head:has(.roll-stat-box) { align-items: flex-start; }
+.roll-stat-box > div { padding: 10px 20px; gap: 4px; min-width: 150px; }
+.roll-stat-box strong { font-size: 22px; }
+
+/* Connected wallet: the address in the black moving button, no dot, no arrow. Its menu drops
+   from the button's right edge. */
+.wallet-btn .btn.wallet-connected { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid #000; background: #000; color: #fff; }
+.wallet-btn .btn.wallet-connected:hover:not(:disabled) { background: #000; color: #fff; }
+.wallet-menu .menu { right: 0; left: auto; top: calc(100% + 6px); }
+
+/* The green Live square in the nav blinks on and off, like a live indicator. Still for reduced motion. */
+.nav-live i { animation: live-blink 1.4s steps(2, jump-none) infinite; }
+@keyframes live-blink { 0% { opacity: 1; } 100% { opacity: 0.15; } }
+@media (prefers-reduced-motion: reduce) { .nav-live i { animation: none; } }
+
+/* 5 rarest and Latest rolls: each one its own square box with a gap between, no long black rule under the
+   title and no half height dividers. A box lifts and darkens its edge on hover, so they pop. */
+.strike-feature, .feature-frame .strike-feature { border-top: 0; gap: 12px; margin-top: 4px; }
+.strike-feature li { border: 1px solid var(--frame); background: var(--bg); min-height: 200px; transition: transform 0.2s ease, border-color 0.2s ease; }
+.strike-feature li + li { border-left: 1px solid var(--frame); }
+.strike-feature li:hover { transform: translateY(-4px); border-color: var(--ink); }
+@media (max-width: 900px) { .strike-feature li { border-bottom: 1px solid var(--frame); } .strike-feature li + li { border-left: 1px solid var(--frame); } }

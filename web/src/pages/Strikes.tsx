@@ -10,7 +10,6 @@ import { BitmapCurve, GradientView } from '../components/StrikesLab.tsx';
 import { TraitIcon, shareText, traitShare } from '../components/TraitIcons.tsx';
 import { FilterMenu } from '../components/FilterMenu.tsx';
 import { SurvivalTable } from '../components/SurvivalTable.tsx';
-import { RollStats } from '../components/Roll.tsx';
 
 type Filter = 'all' | 'rare' | 'surviving';
 type Status = 'surviving' | 'melted' | 'unissued';
@@ -91,42 +90,120 @@ export function Strikes() {
     (!statuses.length || statuses.includes(statusOf(s))));
   const notable = searching
     ? [...found].sort((a, b) => b.rank - a.rank || a.strike - b.strike)
-    : [...rows].sort((a, b) => b.rank - a.rank || a.strike - b.strike).slice(0, 50);
+    : [...rows].sort((a, b) => b.rank - a.rank || a.strike - b.strike).slice(0, 5);
   const clear = () => { setJump(''); setTiers([]); setTraits([]); setStatuses([]); setPage(0); };
   const pages = Math.max(1, Math.ceil(notable.length / PER_PAGE));
   const pageRows = notable.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
+  const top5 = [...rows].sort((a, b) => b.rank - a.rank || a.strike - b.strike).slice(0, 5);
 
   return (
     <>
+      {/* DRAFT lines, awaiting Harriet's approval. */}
       <div className="page-head">
         <div>
           <h1>Strikes</h1>
-          {/* DRAFT subtitle, awaiting Harriet's approval. */}
-          <p className="muted page-sub">The live $PROOF ledger, showing all 794 Strikes, their rarity, and how much of each survives, read from the chain by the indexer.</p>
+          <p className="muted page-sub">On the curve. All 794 Strikes, their rarity, and how much of each survives, live from the chain.</p>
         </div>
+        {/* The two headline numbers, in the same square as on the Rolls page. DRAFT labels. */}
+        {data && (
+          <div className="roll-stat-box">
+            <div><strong>{data.filter((x) => BigInt(x.issued) > 0n).length.toLocaleString()}</strong><span className="muted">Strikes issued</span></div>
+            <div><strong>{pct(data.reduce((a, x) => a + BigInt(x.surviving), 0n).toString(), data.reduce((a, x) => a + BigInt(x.issued), 0n).toString())}%</strong><span className="muted">Still surviving</span></div>
+          </div>
+        )}
       </div>
 
+
+      {/* Find a Strike: a plain bar under the title. DRAFT wording, awaiting Harriet's approval. */}
+      <section className="strike-search top-search">
+        <form
+          className="search-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (num && found.length === 1) location.hash = `#/strike/${found[0].strike}`;
+            else if (num) location.hash = `#/strike/${Number(num)}`;
+          }}
+        >
+          <input placeholder="Search by Strike number" value={jump} onChange={(e) => { setJump(e.target.value); setPage(0); }} inputMode="numeric" aria-label="Strike number" />
+          <FilterMenu label="Trait" options={TRAIT_NAMES.map((n) => ({ value: n, label: n, mark: <TraitIcon trait={n} />, note: traitShare(n), sep: n === 'Double Die', heading: n === 'Genesis' ? 'Date, set by when it was bought' : n === 'Double Die' ? 'Error, assigned at the reveal' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
+          <FilterMenu label="Status" options={STATUS_NAMES.map(([k, n]) => ({ value: k, label: n }))} chosen={statuses} onToggle={(v) => toggle(statuses, setStatuses, v)} />
+          <button className="btn btn-primary">Search</button>
+        </form>
+        {searching && (
+          <p className="search-summary">
+            <span className="muted">{notable.length} {notable.length === 1 ? 'Strike' : 'Strikes'} match</span>
+            <button type="button" className="chip-clear" onClick={clear}>Clear all</button>
+          </p>
+        )}
+      </section>
+
+      {searching && (
+        <section className="panel">
+          <div className="panel-head panel-head-stack">
+            <h2>{notable.length} {notable.length === 1 ? 'Strike' : 'Strikes'} found</h2>
+            <p className="muted list-sub">Matching your search, rarest first.</p>
+          </div>
+        {data && !notable.length && <p className="muted">{searching ? 'No Strikes match.' : 'Nothing here yet.'}</p>}
+        {searching && <ul className="strike-list">
+          {pageRows.map((s) => {
+            const survivalPct = pct(s.surviving, s.issued);
+            return (
+              <li key={s.strike}>
+                <StrikeCoin strike={s.strike} rank={s.rank} part={s.surviving} whole={s.issued} />
+                <div className="strike-list-main">
+                  <a href={`#/strike/${s.strike}`} className="strike-title">Strike #{s.strike}</a>
+                  <Traits traits={s.traits} rank={s.rank} />
+                </div>
+                <div className="strike-list-bar">
+                  <Bar value={survivalPct} tierClass={`t${tier(s.rank)}`} />
+                  <span className="mono small muted">{fmtTokens(s.surviving)} surviving</span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>}
+        {searching && pages > 1 && (
+          <nav className="pager" aria-label="Pages">
+            <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>← Previous</button>
+            <span className="pager-pages">
+              {Array.from({ length: pages }, (_, i) => (
+                <button key={i} type="button" className={i === page ? 'on' : ''} aria-current={i === page ? 'page' : undefined} onClick={() => setPage(i)}>{i + 1}</button>
+              ))}
+            </span>
+            <button type="button" disabled={page === pages - 1} onClick={() => setPage(page + 1)}>Next →</button>
+          </nav>
+        )}
+        </section>
+      )}
+
+      {/* The five rarest Strikes first, in a frame whose border cycles through the rarity colours. */}
+      {!searching && data && top5.length > 0 && (
+        <section className="feature-frame">
+          <div className="feature-inner">
+            {/* DRAFT heading and line, awaiting Harriet's approval. */}
+            <div className="panel-head panel-head-stack">
+              <h2>The 5 rarest Strikes</h2>
+              <p className="muted list-sub">The top of the ledger right now. The ones collectors want.</p>
+            </div>
+            <ul className="strike-feature">
+              {top5.map((s) => (
+                <li key={s.strike} className={`t${tier(s.rank)}`}>
+                  <StrikeCoin strike={s.strike} rank={s.rank} part={s.surviving} whole={s.issued} />
+                  <a href={`#/strike/${s.strike}`} className="strike-title">Strike #{s.strike}</a>
+                  <span className="feature-tier">{TIER_NAMES[tier(s.rank)]}</span>
+                  <Traits traits={s.traits} rank={s.rank} />
+                  <span className="mono small muted">{pct(s.surviving, s.issued)}% surviving</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       <div className="tabs" role="tablist" aria-label="View">
         {(['curve', 'sheet', 'gradient'] as const).map((v) => (
           <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'tab on' : 'tab'} onClick={() => setView(v)}>
-            {v === 'gradient' ? (
-              // a little gradient: blocks shading from one colour to the next
-              <svg className="tab-icon tab-icon-gradient" viewBox="0 0 13 9" aria-hidden shapeRendering="crispEdges">
-                {[0, 1, 2, 3].map((x) => <rect key={x} className={`gi${x}`} x={x * 3.4} y={0} width={2.6} height={9} />)}
-              </svg>
-            ) : v === 'sheet' ? (
-              // a little sheet: a grid of blocks
-              <svg className="tab-icon" viewBox="0 0 13 9" aria-hidden shapeRendering="crispEdges">
-                {[0, 1, 2, 3].flatMap((x) => [0, 1, 2].map((y) => <rect key={`${x},${y}`} x={x * 3.4} y={y * 3.2} width={2.6} height={2.4} />))}
-              </svg>
-            ) : (
-              // a little curve: columns of blocks rising
-              <svg className="tab-icon" viewBox="0 0 13 9" aria-hidden shapeRendering="crispEdges">
-                {[1.6, 2.6, 4, 6, 9].map((h, x) => <rect key={x} x={x * 2.7} y={9 - h} width={2} height={h} />)}
-              </svg>
-            )}
-            {v === 'sheet' ? 'Mint sheet' : v === 'gradient' ? 'Gradient' : 'Bonding curve'}
+            {v === 'sheet' ? 'Mint sheet' : v === 'gradient' ? 'Gradient' : 'On the curve'}
           </button>
         ))}
       </div>
@@ -171,76 +248,20 @@ export function Strikes() {
         )}
       </section>
 
+
       <section className="panel">
         <div className="panel-head panel-head-stack">
-          <h2>{searching ? `${notable.length} ${notable.length === 1 ? 'Strike' : 'Strikes'} found` : `Top ${notable.length} rarest Strikes`}</h2>
+          <h2>Survival by rarity</h2>
           {/* DRAFT line, awaiting Harriet's approval. */}
-          <p className="muted list-sub">{searching ? 'Matching your search, rarest first.' : 'Ranked by rarity. Open any other Strike from the map above.'}</p>
+          <p className="muted list-sub">How much of each rarity is still rare. Rare tokens melt when they are sold or sent, so these numbers can only go down.</p>
         </div>
-        {/* Search the list below: by Strike number, trait or status. The chart key covers rarity. DRAFT wording, awaiting Harriet's approval. */}
-        <section className="strike-search list-search">
-          <form
-            className="search-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (num && found.length === 1) location.hash = `#/strike/${found[0].strike}`;
-              else if (num) location.hash = `#/strike/${Number(num)}`;
-            }}
-          >
-            <input placeholder="Search by Strike number" value={jump} onChange={(e) => { setJump(e.target.value); setPage(0); }} inputMode="numeric" aria-label="Strike number" />
-            <FilterMenu label="Trait" options={TRAIT_NAMES.map((n) => ({ value: n, label: n, mark: <TraitIcon trait={n} />, note: traitShare(n), sep: n === 'Double Die', heading: n === 'Genesis' ? 'Date, set by when it was bought' : n === 'Double Die' ? 'Error, assigned at the reveal' : undefined }))} chosen={traits} onToggle={(v) => toggle(traits, setTraits, v)} />
-            <FilterMenu label="Status" options={STATUS_NAMES.map(([k, n]) => ({ value: k, label: n }))} chosen={statuses} onToggle={(v) => toggle(statuses, setStatuses, v)} />
-            <button className="btn btn-primary">Search</button>
-          </form>
-          {searching && (
-            <p className="search-summary">
-              <span className="muted">{notable.length} {notable.length === 1 ? 'Strike' : 'Strikes'} match</span>
-              <button type="button" className="chip-clear" onClick={clear}>Clear all</button>
-            </p>
-          )}
-        </section>
-        {data && !notable.length && <p className="muted">{searching ? 'No Strikes match.' : 'Nothing here yet.'}</p>}
-        <ul className="strike-list">
-          {pageRows.map((s) => {
-            const survivalPct = pct(s.surviving, s.issued);
-            return (
-              <li key={s.strike}>
-                <StrikeCoin strike={s.strike} rank={s.rank} part={s.surviving} whole={s.issued} />
-                <div className="strike-list-main">
-                  <a href={`#/strike/${s.strike}`} className="strike-title">Strike #{s.strike}</a>
-                  <Traits traits={s.traits} rank={s.rank} />
-                </div>
-                <div className="strike-list-bar">
-                  <Bar value={survivalPct} tierClass={`t${tier(s.rank)}`} />
-                  <span className="mono small muted">{fmtTokens(s.surviving)} surviving</span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        {pages > 1 && (
-          <nav className="pager" aria-label="Pages">
-            <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>← Previous</button>
-            <span className="pager-pages">
-              {Array.from({ length: pages }, (_, i) => (
-                <button key={i} type="button" className={i === page ? 'on' : ''} aria-current={i === page ? 'page' : undefined} onClick={() => setPage(i)}>{i + 1}</button>
-              ))}
-            </span>
-            <button type="button" disabled={page === pages - 1} onClick={() => setPage(page + 1)}>Next →</button>
-          </nav>
-        )}
-      </section>
-
-      <RollStats />
-
-      <section className="panel">
-        <h2>Survival by rarity</h2>
         {!s ? <Loading /> : !s.revealed ? (
           <p className="muted">Traits are sealed until the reveal. Until then every Strike counts as equal, and the highest-numbered tokens leave a wallet first.</p>
         ) : (
           <SurvivalTable rows={s.byRank} />
         )}
       </section>
+
 
     </>
   );

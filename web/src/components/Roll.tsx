@@ -6,13 +6,19 @@ import { api, useApi } from '../api.ts';
 import type { Envelope, Health, Rolls, WalletView } from '../api.ts';
 import type { RollRules } from '../../../indexer/src/derive.ts';
 import { useConfig, useVault } from '../App.tsx';
+import { isAddress } from '../chain.ts';
 import { BASE, TIER_NAMES, explorer, fmtTokens, short, sol, tier } from '../format.ts';
 import { ErrorNote, Loading, Modal, runTx } from './ui.tsx';
 import { coinCells } from './pixels.tsx';
+import { PixelIcon, rollIconName, shareText } from './TraitIcons.tsx';
+import { FilterMenu } from './FilterMenu.tsx';
 
 const COIN = coinCells(7, 5, 0);
 
-function RollCoin({ points, spinning = false }: { points: number | null; spinning?: boolean }) {
+function RollCoin({ points, spinning = false, name }: { points: number | null; spinning?: boolean; name?: string }) {
+  // Each tier's own pixel symbol once the result is known; the plain coin while it spins.
+  const icon = !spinning && points !== null ? rollIconName(name) : undefined;
+  if (icon) return <span className={`roll-coin roll-icon t${tier(points!)}`} aria-hidden><PixelIcon name={icon} /></span>;
   return (
     <span className={`roll-coin ${points === null ? 'roll-coin-blank' : `t${tier(points)}`}${spinning ? ' roll-coin-spin' : ''}`} aria-hidden>
       <svg viewBox="0 0 7 5" shapeRendering="crispEdges">
@@ -31,7 +37,7 @@ export function RollBadge({ e }: { e: Pick<Envelope, 'roll' | 'rolling'> }) {
   if (e.rolling) return <span className="pill roll-badge roll-pending">Rolling…</span>;
   if (!e.roll) return null;
   const t = tier(e.roll.points);
-  return <span className={`pill roll-badge t${t}`}>{e.roll.name} · {TIER_NAMES[t]}</span>;
+  return <span className={`pill roll-badge t${t}`}><RollCoin points={e.roll.points} name={e.roll.name} />{e.roll.name} · {TIER_NAMES[t]}</span>;
 }
 
 export function OddsTable({ roll }: { roll: RollRules }) {
@@ -44,15 +50,15 @@ export function OddsTable({ roll }: { roll: RollRules }) {
       <tbody>
         {roll.tiers.map((t) => (
           <tr key={t.name}>
-            <td><RollCoin points={t.points} /> {t.name}</td>
+            <td><RollCoin points={t.points} name={t.name} /> {t.name}</td>
             <td className={`t${tier(t.points)}-text`}>{TIER_NAMES[tier(t.points)]}</td>
             <td className="num mono">{t.points}</td>
             <td className="num mono">{odds(t.odds)}</td>
           </tr>
         ))}
         <tr>
-          <td><RollCoin points={roll.fallback.points} /> {roll.fallback.name}</td>
-          <td>{TIER_NAMES[tier(roll.fallback.points)]}</td>
+          <td><RollCoin points={roll.fallback.points} name={roll.fallback.name} /> {roll.fallback.name}</td>
+          <td className={`t${tier(roll.fallback.points)}-text`}>{TIER_NAMES[tier(roll.fallback.points)]}</td>
           <td className="num mono">{roll.fallback.points}</td>
           <td className="num mono">{odds(1_000_000 - winOdds)}</td>
         </tr>
@@ -77,7 +83,7 @@ export function RollReveal({ signature, onClose }: { signature: string; onClose:
   return (
     <Modal title={result ? 'Your roll' : 'Striking…'} onClose={onClose}>
       <div className={`roll-reveal${result ? ` roll-done t${t}` : ''}`}>
-        <RollCoin points={result?.points ?? null} spinning={!result && !err} />
+        <RollCoin points={result?.points ?? null} name={result?.name} spinning={!result && !err} />
         {result ? (
           <>
             <strong className="roll-name">{result.name}</strong>
@@ -232,13 +238,22 @@ export function RollAgain({ e }: { e: Envelope }) {
 }
 
 // Strikes page: every rolled tier, how often it has come up, how many still exist, and recent rolls.
-export function RollStats() {
+// `title` names the panel. `pageHead` makes it a page: the title and its line above the panel, like the
+// other page titles, and only the data inside (the Rolls page).
+export function RollStats({ title = 'Rolled tiers', pageHead = false }: { title?: string; pageHead?: boolean } = {}) {
   const config = useConfig();
   const { data } = useApi<Rolls>(config.roll ? '/rolls?limit=12' : null);
   const roll = config.roll;
   const box = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   const [tip, setTip] = useState<{ text: string; tier: string; x: number; y: number } | null>(null);
+  // The Rolls page search: a tier name or a wallet, and a rarity filter. It narrows the table and the latest rolls.
+  const [q, setQ] = useState('');
+  const [bands, setBands] = useState<number[]>([]);
+  // The key: hovering a rarity picks out its columns in the chart and its rows in the table; a click keeps it.
+  const [hover, setHover] = useState<number | null>(null);
+  const [pin, setPin] = useState<number | null>(null);
+  const focus = hover ?? pin;
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -248,79 +263,207 @@ export function RollStats() {
   }, [roll]);
   if (!roll) return null;
   const winOdds = roll.tiers.reduce((t, x) => t + x.odds, 0);
-  const rows = [...roll.tiers, { ...roll.fallback, odds: 1_000_000 - winOdds }];
+  const allRows = [...roll.tiers, { ...roll.fallback, odds: 1_000_000 - winOdds }];
+  const query = q.trim().toLowerCase();
+  const bandOk = (points: number) => !bands.length || bands.includes(tier(points));
+  const rows = allRows.filter((t) => bandOk(t.points) && (!query || t.name.toLowerCase().includes(query) || TIER_NAMES[tier(t.points)].toLowerCase().includes(query)));
+  const recentRows = (data?.recent ?? []).filter((r) => bandOk(r.points) && (!query || r.name.toLowerCase().includes(query) || r.holder.toLowerCase().startsWith(query)));
   const rares = data ? roll.tiers.reduce((t, x) => t + (data.held[x.name]?.count ?? 0), 0) : null;
+  const line = (
+    <>
+      Ordinary $PROOF sealed in an envelope can roll for one of these tiers ({sol(roll.feeLamports)} SOL per roll,{' '}
+      {fmtTokens(roll.minEntry)} minimum). No caps: the counts below grow with every roll and shrink when envelopes are withdrawn.{' '}
+      <a href="#/wallet">Roll yours</a>
+    </>
+  );
+  const tipBox = tip && (
+    <div className="hover-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} aria-hidden>
+      <i className={`tip-swatch tip-${tip.tier}`} />
+      <span className="tip-body">
+        <strong>{tip.text.split('|')[0]}</strong>
+        <span>{tip.text.split('|')[1]}</span>
+      </span>
+    </div>
+  );
+  const table = (
+    <div className="table-scroll">
+    <table className="table odds roll-stats">
+      <thead>
+        <tr>
+          <th>Tier</th><th>Rarity</th><th className="num">Chance</th><th className="num">Rolled</th>
+          <th className="num">Exist now</th><th className="num">Listed</th><th className="num">Floor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((t) => {
+          const h = data?.held[t.name];
+          const isFallback = t.name === roll.fallback.name;
+          return (
+            <tr key={t.name} data-band={tier(t.points)}>
+              <td><RollCoin points={t.points} name={t.name} /> {t.name}</td>
+              <td className={`t${tier(t.points)}-text`}>{TIER_NAMES[tier(t.points)]}</td>
+              <td className="num mono">{odds(t.odds)}</td>
+              <td className="num mono">{data ? (data.counts[t.name] ?? 0).toLocaleString() : '…'}</td>
+              <td className="num mono">{data ? (h?.count ?? 0).toLocaleString() : '…'}</td>
+              <td className="num mono">{isFallback ? '—' : data ? (h?.listed ?? 0) : '…'}</td>
+              <td className="num mono">{h?.floor ? <a href="#/desk">{sol(h.floor)} SOL</a> : '—'}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+    </div>
+  );
+  const recent = !data ? <Loading /> : !recentRows.length ? (
+    <p className="muted small">{data.recent.length ? 'No rolls match.' : 'No rolls yet.'}</p>
+  ) : (
+    <ul className="feed">
+      {recentRows.map((r) => (
+        <li key={r.signature} className={r.points > 0 ? 'feed-issue' : 'feed-melt'}>
+          <span className="feed-icon" aria-hidden><RollCoin points={r.points} name={r.name} /></span>
+          <span className="feed-text">
+            <a href={`#/wallet/${r.holder}`}>{short(r.holder)}</a> rolled <strong>{r.name}</strong>
+            {r.points > 0 && <span className="muted"> · {TIER_NAMES[tier(r.points)]}</span>}
+          </span>
+          <a className="feed-link mono small" href={explorer('tx', r.signature)} target="_blank" rel="noreferrer">slot {r.slot}</a>
+        </li>
+      ))}
+    </ul>
+  );
+  const countLine = data && (
+    <p className="mono small muted">
+      {data.total.toLocaleString()} rolls so far · {rares?.toLocaleString()} rolled rares held in envelopes now
+    </p>
+  );
+  // Each rarity's share of all rolls so far, for the key.
+  const rollShare = (band: number) => {
+    if (!data?.total) return '';
+    const n = allRows.filter((t) => tier(t.points) === band).reduce((a, t) => a + (data.counts[t.name] ?? 0), 0);
+    return shareText(n, data.total);
+  };
+
+  if (pageHead) {
+    // The Rolls page: the chart in its own tabbed container with a key at the top right, like the Strikes
+    // chart, then the tiers table and the latest rolls each in their own container.
+    return (
+      <div className="roll-page" data-focus={focus ?? undefined}>
+        <div className="page-head">
+          <div>
+            <h1>{title}</h1>
+            <p className="muted page-sub">After the curve. Ordinary $PROOF sealed in an envelope can roll for one of these tiers.</p>
+          </div>
+          {/* The two headline numbers, large, in their own square at the top right. DRAFT labels. */}
+          {data && (
+            <div className="roll-stat-box">
+              <div><strong>{data.total.toLocaleString()}</strong><span className="muted">Rolls so far</span></div>
+              <div><strong>{rares?.toLocaleString()}</strong><span className="muted">Rolled rares held now</span></div>
+            </div>
+          )}
+        </div>
+        {/* Search, as on the Strikes page: a plain bar under the title. DRAFT wording, awaiting Harriet's approval. */}
+        <section className="strike-search top-search">
+          <form
+            className="search-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (isAddress(q.trim())) location.hash = `#/wallet/${q.trim()}`;
+            }}
+          >
+            <input placeholder="Search by tier or wallet" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Tier or wallet" />
+            <FilterMenu label="Rarity" options={TIER_NAMES.map((n, i) => ({ value: i, label: n }))} chosen={bands} onToggle={(v) => setBands(bands.includes(v) ? bands.filter((x) => x !== v) : [...bands, v])} />
+            <button className="btn btn-primary">Search</button>
+          </form>
+          {(query || bands.length > 0) && (
+            <p className="search-summary">
+              <span className="muted">{rows.length} {rows.length === 1 ? 'tier' : 'tiers'} and {recentRows.length} {recentRows.length === 1 ? 'roll' : 'rolls'} match</span>
+              <button type="button" className="chip-clear" onClick={() => { setQ(''); setBands([]); }}>Clear all</button>
+            </p>
+          )}
+        </section>
+        {/* The latest rolls first, in the frame with the colour cycling border, like the 5 rarest Strikes. */}
+        <section className="feature-frame">
+          <div className="feature-inner">
+            <div className="panel-head panel-head-stack">
+              {/* DRAFT heading and line, awaiting Harriet's approval. */}
+              <h2>Latest rolls</h2>
+              <p className="muted list-sub">The newest rolls, as they land on the chain.</p>
+            </div>
+            {!data ? <Loading /> : !recentRows.length ? (
+              <p className="muted small">{data.recent.length ? 'No rolls match.' : 'No rolls yet.'}</p>
+            ) : (
+              <ul className="strike-feature">
+                {recentRows.slice(0, 5).map((r) => (
+                  <li key={r.signature} className={`t${tier(r.points)}`}>
+                    <RollCoin points={r.points} name={r.name} />
+                    <strong className="strike-title">{r.name}</strong>
+                    <span className="feature-tier">{TIER_NAMES[tier(r.points)]}</span>
+                    <a href={`#/wallet/${r.holder}`} className="mono small">{short(r.holder)}</a>
+                    <a className="mono small muted" href={explorer('tx', r.signature)} target="_blank" rel="noreferrer">slot {r.slot}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+        <div className="tabs" role="tablist" aria-label="View">
+          {/* DRAFT tab label, awaiting Harriet's approval. */}
+          <button type="button" role="tab" aria-selected className="tab on">Rolled tiers</button>
+        </div>
+        <section className="panel tabbed">
+          <div className="view-head">
+            <div className="muted view-line" />
+            <div className="legend small key-interactive">
+              <span className="key-hint">Filter</span>
+              {TIER_NAMES.map((n, i) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={focus === i ? 'key-item on' : 'key-item'}
+                  onMouseEnter={() => setHover(i)}
+                  onMouseLeave={() => setHover(null)}
+                  onFocus={() => setHover(i)}
+                  onBlur={() => setHover(null)}
+                  onClick={() => setPin(pin === i ? null : i)}
+                  aria-pressed={focus === i}
+                >
+                  <i className={`swatch t${i}`} />{n}{rollShare(i) && <span className="key-share">{rollShare(i)}</span>}
+                </button>
+              ))}
+              <span className="key-item"><i className="swatch melted-swatch" />Withdrawn</span>
+              <span className="key-item"><i className="swatch unissued-swatch" />Not rolled yet</span>
+            </div>
+          </div>
+          <div className="roll-curve-box" ref={box}>
+            {w > 0 && <RollCurve roll={roll} data={data} width={w} onTip={setTip} />}
+          </div>
+          {tipBox}
+        </section>
+        <section className="panel">
+          <div className="panel-head panel-head-stack">
+            {/* DRAFT heading and line, awaiting Harriet's approval. */}
+            <h2>Every tier</h2>
+            <p className="muted list-sub">The odds of each tier, how many have been rolled, how many still exist, and the desk floor.</p>
+          </div>
+          {table}
+        </section>
+      </div>
+    );
+  }
+
   return (
     <section className="panel">
       <div className="panel-head panel-head-stack">
-        <h2>Rolled tiers</h2>
-        <p className="muted list-sub">
-          Ordinary $PROOF sealed in an envelope can roll for one of these tiers ({sol(roll.feeLamports)} SOL per roll,{' '}
-          {fmtTokens(roll.minEntry)} minimum). No caps: the counts below grow with every roll and shrink when envelopes are withdrawn.{' '}
-          <a href="#/wallet">Roll yours</a>
-        </p>
+        <h2>{title}</h2>
+        <p className="muted list-sub">{line}</p>
       </div>
-      {data && (
-        <p className="mono small muted">
-          {data.total.toLocaleString()} rolls so far · {rares?.toLocaleString()} rolled rares held in envelopes now
-        </p>
-      )}
+      {countLine}
       <div className="roll-curve-box" ref={box}>
         {w > 0 && <RollCurve roll={roll} data={data} width={w} onTip={setTip} />}
       </div>
-      {tip && (
-        <div className="hover-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} aria-hidden>
-          <i className={`tip-swatch tip-${tip.tier}`} />
-          <span className="tip-body">
-            <strong>{tip.text.split('|')[0]}</strong>
-            <span>{tip.text.split('|')[1]}</span>
-          </span>
-        </div>
-      )}
-      <div className="table-scroll">
-      <table className="table odds roll-stats">
-        <thead>
-          <tr>
-            <th>Tier</th><th>Rarity</th><th className="num">Chance</th><th className="num">Rolled</th>
-            <th className="num">Exist now</th><th className="num">Listed</th><th className="num">Floor</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((t) => {
-            const h = data?.held[t.name];
-            const isFallback = t.name === roll.fallback.name;
-            return (
-              <tr key={t.name}>
-                <td><RollCoin points={t.points} /> {t.name}</td>
-                <td className={`t${tier(t.points)}-text`}>{TIER_NAMES[tier(t.points)]}</td>
-                <td className="num mono">{odds(t.odds)}</td>
-                <td className="num mono">{data ? (data.counts[t.name] ?? 0).toLocaleString() : '…'}</td>
-                <td className="num mono">{data ? (h?.count ?? 0).toLocaleString() : '…'}</td>
-                <td className="num mono">{isFallback ? '—' : data ? (h?.listed ?? 0) : '…'}</td>
-                <td className="num mono">{h?.floor ? <a href="#/desk">{sol(h.floor)} SOL</a> : '—'}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      </div>
+      {tipBox}
+      {table}
       <h3 className="roll-recent-head">Latest rolls</h3>
-      {!data ? <Loading /> : !data.recent.length ? (
-        <p className="muted small">No rolls yet.</p>
-      ) : (
-        <ul className="feed">
-          {data.recent.map((r) => (
-            <li key={r.signature} className={r.points > 0 ? 'feed-issue' : 'feed-melt'}>
-              <span className="feed-icon" aria-hidden><RollCoin points={r.points} /></span>
-              <span className="feed-text">
-                <a href={`#/wallet/${r.holder}`}>{short(r.holder)}</a> rolled <strong>{r.name}</strong>
-                {r.points > 0 && <span className="muted"> · {TIER_NAMES[tier(r.points)]}</span>}
-              </span>
-              <a className="feed-link mono small" href={explorer('tx', r.signature)} target="_blank" rel="noreferrer">slot {r.slot}</a>
-            </li>
-          ))}
-        </ul>
-      )}
+      {recent}
     </section>
   );
 }
@@ -369,7 +512,7 @@ export function RollCurve({ roll, data, width, onTip }: {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < band; c++) {
         const cls = !rolled ? 'rc-none' : n < lit ? (tr === 0 ? 'rc-coal' : `lab-t${tr}`) : 'rc-gone';
-        rects.push(<rect key={`${i},${r},${c}`} className={cls} x={x0 + c * pitch} y={base - (r + 1) * pitch} width={cell} height={cell} data-tip={tip} data-tier={!rolled ? 'u' : tr === 0 ? 'm' : tr} />);
+        rects.push(<rect key={`${i},${r},${c}`} className={cls} x={x0 + c * pitch} y={base - (r + 1) * pitch} width={cell} height={cell} data-tip={tip} data-tier={!rolled ? 'u' : tr === 0 ? 'm' : tr} data-band={tr} />);
         n++;
       }
     }

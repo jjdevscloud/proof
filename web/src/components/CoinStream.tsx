@@ -11,7 +11,17 @@ const TRAITS: [string, string, string, string, number][] = [
   ['genesis', '--t2', 'Genesis', 'Date', 2], ['keydate', '--t1', 'Key Date', 'Date', 1], ['final', '--t1', 'Final Strike', 'Date', 1],
   ['common', '--t0', 'Common Date', 'Date', 0], ['doubledie', '--t3', 'Double Die', 'Error', 3], ['wrongplanchet', '--t3', 'Wrong Planchet', 'Error', 3],
   ['offcenter', '--t2', 'Off Center', 'Error', 2], ['clipped', '--t2', 'Clipped Planchet', 'Error', 2], ['diecrack', '--t1', 'Die Crack', 'Error', 1],
+  // The rolled tiers, after the curve, mixed in with the curve traits.
+  ['hoard', '--t3', 'Hoard', 'Roll', 3], ['pattern', '--t3', 'Pattern', 'Roll', 3], ['dietrial', '--t3', 'Die Trial', 'Roll', 3],
+  ['overstrike', '--t2', 'Overstrike', 'Roll', 2], ['restrike', '--t2', 'Restrike', 'Roll', 2], ['secondstrike', '--t2', 'Second Strike', 'Roll', 2],
+  ['recoinage', '--t1', 'Recoinage', 'Roll', 1], ['reissue', '--t1', 'Reissue', 'Roll', 1], ['mintrun', '--t1', 'Mint Run', 'Roll', 1],
+  ['assay', '--t1', 'Assay', 'Roll', 1], ['coal', '--t0', 'Coal', 'Roll', 0],
 ];
+// A rolled tier's chance per roll, from the rules, for the hover label.
+const ROLL_ODDS: Record<string, string> = {
+  'Hoard': '0.05%', 'Pattern': '0.1%', 'Die Trial': '0.2%', 'Overstrike': '0.4%', 'Restrike': '0.6%', 'Second Strike': '1%',
+  'Recoinage': '1.5%', 'Reissue': '2%', 'Mint Run': '3%', 'Assay': '4%', 'Coal': '87.15%',
+};
 const PX = 3; // one coin pixel on screen
 
 type Coin = { x: number; y: number; row: number; speed: number; spin: number; phase: number; kind: number };
@@ -147,7 +157,7 @@ export function CoinStream() {
     };
   }, []);
 
-  const [, , name, , tierN] = tip ? TRAITS[tip.kind] : ['', '', '', '', 0];
+  const [, , name, kind, tierN] = tip ? TRAITS[tip.kind] : ['', '', '', '', 0];
   return (
     <>
       <canvas ref={ref} className="coin-stream" aria-hidden />
@@ -155,7 +165,7 @@ export function CoinStream() {
         <div className="hover-tip coin-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} aria-hidden>
           <i className={`tip-swatch tip-${tierN}`} />
           <span className="tip-body">
-            <strong>{name} {traitShare(name as string)}</strong>
+            <strong>{name} {kind === 'Roll' ? `${ROLL_ODDS[name as string]} per roll` : traitShare(name as string)}</strong>
           </span>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { bumpVersion, subscribe, useApi } from './api.ts';
 import type { Config } from './api.ts';
 import { Vault, useWallet } from './chain.ts';
@@ -10,6 +10,9 @@ import { StrikePage } from './pages/Strike.tsx';
 import { Desk } from './pages/Desk.tsx';
 import { WalletPage } from './pages/Wallet.tsx';
 import { Rules } from './pages/Rules.tsx';
+import { Traits } from './pages/Traits.tsx';
+import { Glossary } from './pages/Glossary.tsx';
+import { Rolls } from './pages/Rolls.tsx';
 import { Prelaunch } from './pages/Prelaunch.tsx';
 import { DEMO } from './demo.ts';
 import { Logo } from './components/Logo.tsx';
@@ -35,13 +38,18 @@ function useRoute(): string[] {
   return hash.replace(/^#\/?/, '').split('/').filter(Boolean);
 }
 
+// The pages about the project first, then the live $PROOF pages (data from the chain), split in the nav.
 const NAV = [
   ['', 'Overview'],
   ['rules', 'Rules'],
+  ['traits', 'Traits'],
+  ['glossary', 'Glossary'],
   ['strikes', 'Strikes'],
+  ['rolls', 'Rolls'],
   ['desk', 'Desk'],
   ['wallet', 'My wallet'],
 ] as const;
+const LIVE_FROM = 'strikes';
 
 export function App() {
   const { data: config, error, reload } = useApi<Config>('/config');
@@ -96,6 +104,12 @@ function Page({ route }: { route: string[] }) {
       return <WalletPage address={route[1] ?? null} />;
     case 'rules':
       return <Rules />;
+    case 'traits':
+      return <Traits />;
+    case 'glossary':
+      return <Glossary />;
+    case 'rolls':
+      return <Rolls />;
     default:
       return (
         <div className="panel">
@@ -120,7 +134,11 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
         <button className="icon-btn nav-toggle" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>☰</button>
         <nav className={open ? 'nav open' : 'nav'} onClick={() => setOpen(false)}>
           {NAV.filter(([path]) => !pending || path === '' || path === 'rules').map(([path, label]) => (
-            <a key={path} href={`#/${path}`} className={route === path || (path === 'strikes' && route === 'strike') ? 'active' : ''}>{label}</a>
+            <Fragment key={path}>
+              {/* DRAFT label, awaiting Harriet's approval. */}
+              {path === LIVE_FROM && <span className="nav-live" aria-label="Live $PROOF data"><i />Live</span>}
+              <a href={`#/${path}`} className={route === path || (path === 'strikes' && route === 'strike') ? 'active' : ''}>{label}</a>
+            </Fragment>
           ))}
         </nav>
         <div className="header-right">
@@ -140,7 +158,16 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
             </button>
           )}
         </div>
-        <a className="btn btn-primary btn-cycle" href="#/wallet">Check my wallet</a>
+        {/* The moving button now connects a wallet (it used to link to Check my wallet). Once connected, the
+            wallet menu beside it takes over. */}
+        {!pending && !wallet.address && !wallet.restoring && (
+          <button
+            className="btn btn-primary btn-cycle"
+            onClick={() => wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => setErr(e.message))}
+          >
+            Connect wallet
+          </button>
+        )}
         </div>
       </div>
       {err && (
@@ -170,8 +197,9 @@ function WalletMenu({ address, onDisconnect }: { address: string; onDisconnect: 
   }, [open]);
   return (
     <div className="wallet-menu">
-      <button className="btn btn-ghost" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
-        <span className="dot" /> {short(address)} <span aria-hidden className="caret">▾</span>
+      {/* Connected: the address inside the same black moving button as Connect wallet. A click opens the menu. */}
+      <button className="btn btn-primary btn-cycle wallet-connected" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
+        {short(address)}
       </button>
       {open && (
         <div className="menu" role="menu">

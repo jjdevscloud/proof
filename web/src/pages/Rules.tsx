@@ -3,7 +3,9 @@ import { Addr } from '../components/ui.tsx';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { StepNav } from '../components/StepNav.tsx';
 import { CoinStream } from '../components/CoinStream.tsx';
-import { OddsTable } from '../components/Roll.tsx';
+import { PixelIcon, rollIconName } from '../components/TraitIcons.tsx';
+import { tier } from '../format.ts';
+import type { Config } from '../api.ts';
 import { fmtTokens, sol } from '../format.ts';
 import type { ReactNode } from 'react';
 import { Modal } from '../components/ui.tsx';
@@ -38,7 +40,7 @@ export function Rules() {
       {/* The story, large, in the frame where the overview has its word. */}
       <div className="frame hero-frame rules-hero">
         <CoinStream />
-        <p className="lines-text rules-story">A 1955 doubled die penny spends as one cent at a shop but sells to a dealer for thousands, because only a few ever left the mint. Sequents does the same for $PROOF. On Jupiter every token is equal. On the desk, a collector decides what a rare one is worth.</p>
+        <p className="lines-text rules-story">A 1955 doubled die penny spends as one cent at a shop but sells to a dealer for thousands, because only a few ever left the mint. Sequents does the same for $PROOF. On Solana every token is equal. On the desk, a collector decides what a rare one is worth.</p>
       </div>
       {/* The coin words, three short lines under the frame like the overview's trio. */}
       <div className="trio">
@@ -94,17 +96,25 @@ export function Rules() {
       </Work>
 
       {config.roll && (
-        <Work index={5} title="6. Roll an envelope" graphic={<OddsTable roll={config.roll} />}>
+        <Work index={5} title="6. Roll an envelope" graphic={<TwoRarities roll={config.roll} />} full={
+          <>
         <p>
           Ordinary $PROOF can roll for a rare tier. Seal at least {fmtTokens(config.roll.minEntry)} into an envelope from your
           wallet page and click Roll ({sol(config.roll.feeLamports)} SOL to the Sequents treasury per roll). The result comes from
           the first Solana block at least {config.roll.seedDelaySlots} slots after your roll lands, which nobody can know when you
-          click: sha256 of the roll's signature and that block's hash picks the tier, with the odds above and no limit on how many of
+          click: sha256 of the roll's signature and that block's hash picks the tier, with fixed odds and no limit on how many of
           each can exist. Your browser computes the result itself in a second or two; the ledger records it once the block is final.
         </p>
         <p>
           A rolled tier lives on the envelope: list it on the desk, gift it, or keep it. {config.roll.fallback.name} envelopes can roll
           again. Withdrawing the tokens melts the tier, like any rarity.
+        </p>
+          </>
+        }>
+        {/* DRAFT short version for the box, awaiting Harriet's approval. The full text is in the pop-up. */}
+        <p>
+          Ordinary $PROOF can roll for a rare tier. Seal at least {fmtTokens(config.roll.minEntry)} into an envelope and roll for
+          {' '}{sol(config.roll.feeLamports)} SOL. The next Solana block decides, with fixed odds and no cap.
         </p>
         </Work>
       )}
@@ -138,7 +148,7 @@ const WorkNav = createContext<{ open: number | null; setOpen: (i: number | null)
 
 // One section: its title, its line graphic and the text, all visible. The corner icon opens it large,
 // and the pop-up steps on to the other rules without closing.
-function Work({ index, title, graphic, children }: { index: number; title: string; graphic: ReactNode; children: ReactNode }) {
+function Work({ index, title, graphic, children, full }: { index: number; title: string; graphic: ReactNode; children: ReactNode; full?: ReactNode }) {
   const { open, setOpen, total } = useContext(WorkNav);
   return (
     <section className="work">
@@ -152,11 +162,35 @@ function Work({ index, title, graphic, children }: { index: number; title: strin
         <Modal title={title} onClose={() => setOpen(null)}>
           <div className="mech-modal work-modal">
             {graphic}
-            {children}
+            {full ?? children}
           </div>
           <StepNav at={index} total={total} onMove={setOpen} label="Rules" />
         </Modal>
       )}
     </section>
+  );
+}
+
+// Box 6's picture: the two ways a token can be rare. On the left the traits a Strike gets from the
+// bonding curve, on the right the tiers an envelope can roll after it. Each with its symbol.
+const CURVE_TRAITS: [string, string, number][] = [
+  ['Genesis', 'genesis', 40], ['Key Date', 'keydate', 15], ['Final Strike', 'final', 10], ['Common Date', 'common', 0],
+  ['Double Die', 'doubledie', 100], ['Wrong Planchet', 'wrongplanchet', 70], ['Off Center', 'offcenter', 50],
+  ['Clipped Planchet', 'clipped', 30], ['Die Crack', 'diecrack', 15],
+];
+function TwoRarities({ roll }: { roll: NonNullable<Config['roll']> }) {
+  const rolled = [...roll.tiers.map((t) => [t.name, t.points] as const), [roll.fallback.name, roll.fallback.points] as const];
+  return (
+    <div className="gfx two-rare">
+      {/* DRAFT labels, awaiting Harriet's approval. */}
+      <div>
+        <span className="two-rare-head">On the curve</span>
+        <ul>{CURVE_TRAITS.map(([n, icon, p]) => <li key={n} className={`t${tier(p)}`} title={n}><PixelIcon name={icon} unit={2} /></li>)}</ul>
+      </div>
+      <div>
+        <span className="two-rare-head">After the curve</span>
+        <ul>{rolled.map(([n, p]) => <li key={n} className={`t${tier(p)}`} title={n}>{rollIconName(n) && <PixelIcon name={rollIconName(n)!} unit={2} />}</li>)}</ul>
+      </div>
+    </div>
   );
 }
