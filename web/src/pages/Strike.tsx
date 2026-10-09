@@ -1,18 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../api.ts';
-import type { RevealStatus, StrikeDetail } from '../api.ts';
+import type { RevealStatus, Stats, StrikeDetail } from '../api.ts';
 import { useConfig } from '../App.tsx';
 import { TIER_NAMES, explorer, fmtTokens, pct, tier } from '../format.ts';
 import { matches, verifyReveal } from '../verify.ts';
 import type { Verification } from '../verify.ts';
 import { ActivityFeed } from '../components/Activity.tsx';
-import { Addr, Bar, ErrorNote, Loading, StrikeCoin } from '../components/ui.tsx';
-import { TraitIcon } from '../components/pixels.tsx';
+import { Addr, Bar, ErrorNote, Loading, StrikeCoin, Traits } from '../components/ui.tsx';
+import { shareText } from '../components/TraitIcons.tsx';
+import { PixelLoader, PixelTick } from '../components/PixelTick.tsx';
 
 export function StrikePage({ n }: { n: number }) {
   const config = useConfig();
   const valid = Number.isInteger(n) && n >= 0 && n < config.strikeCount;
   const { data, error } = useApi<StrikeDetail>(valid ? `/strike/${n}` : null);
+  // How many Strikes share this one's rarity, from the live counts by rank.
+  const stats = useApi<Stats>('/stats');
 
   if (!valid) return <ErrorNote error={`There is no Strike #${n}. Strikes run from #0 to #${config.strikeCount - 1}.`} />;
   if (error && !data) return <ErrorNote error={error} />;
@@ -24,18 +27,21 @@ export function StrikePage({ n }: { n: number }) {
     <>
       <nav className="crumbs small"><a className="back-link" href="#/strikes">← Back to Strikes</a></nav>
       <section className="strike-hero panel">
-        <StrikeCoin strike={n} rank={data.rank} size="lg" part={data.surviving} whole={data.issued} />
+        <StrikeCoin strike={n} rank={data.rank} size="lg" part={data.surviving} whole={data.issued} traits={data.traits} />
+        {/* A profile: the name with its trait tags (symbol and name) under it, then plain labelled details. */}
         <div className="profile">
           <div className="profile-name">
             <h1>Strike #{n}</h1>
-            <span className="profile-icons">
-              {(data.traits ?? []).map((t) => <span key={t} title={t}><TraitIcon trait={t} /></span>)}
-            </span>
+            <Traits traits={data.traits} rank={data.rank} share />
           </div>
           <dl className="profile-details">
-            <dt>Rarity</dt><dd>{TIER_NAMES[tier(data.rank)]}</dd>
+            <dt>Rarity</dt><dd><i className={`tier-dot t${tier(data.rank)}`} /> {TIER_NAMES[tier(data.rank)]}{(() => {
+              const by = stats.data?.byRank ?? [];
+              const all = by.reduce((a, r) => a + r.strikes, 0);
+              const same = by.filter((r) => tier(r.rank) === tier(data.rank)).reduce((a, r) => a + r.strikes, 0);
+              return all ? <span className="muted">, {shareText(same, all)} of Strikes</span> : null;
+            })()}</dd>
             <dt>Rank</dt><dd>{data.rank}</dd>
-            <dt>Traits</dt><dd>{data.traits ? data.traits.join(', ') : 'Unrevealed'}</dd>
             <dt>Tokens</dt><dd>#{first.toLocaleString()} to #{(first + BigInt(data.size) / 1_000_000n - 1n).toLocaleString()}</dd>
           </dl>
         </div>
@@ -102,6 +108,17 @@ function VerifyPanel({ n, traits }: { n: number; traits: string[] | null }) {
   };
   const v = state.v;
   const strikeOk = v ? v.ok && matches(v, n, traits) : false;
+  const steps = v ? [...v.steps, { label: `Strike #${n} is ${traits?.join(', ') ?? 'unrevealed'}`, ok: matches(v, n, traits), detail: '' }] : [];
+  // The lines appear one at a time, a moment apart, like the checks before a buy on the desk. Display only:
+  // the check itself ran above, and the outcome shows once the last line is in.
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (!v) return;
+    setShown(0);
+    const id = setInterval(() => setShown((s) => (s >= steps.length ? s : s + 1)), 900);
+    return () => clearInterval(id);
+  }, [v, steps.length]);
+  const checking = state.status === 'running' || (!!v && shown < steps.length);
 
   return (
     <section className="panel verify">
@@ -111,20 +128,21 @@ function VerifyPanel({ n, traits }: { n: number; traits: string[] | null }) {
         <SeedStatus reveal={reveal ?? null} />
       ) : (
         <>
-          <button className="btn btn-ghost" onClick={run} disabled={state.status === 'running'}>
-            {state.status === 'running' ? 'Checking the chain…' : 'Verify in my browser'}
+          <button className="btn btn-ghost" onClick={run} disabled={checking}>
+            {checking ? 'Checking the chain…' : 'Verify in my browser'}
           </button>
-          {v && (
+          {(v || state.status === 'running') && (
             <ul className="checks">
-              {[...v.steps, { label: `Strike #${n} is ${traits?.join(', ') ?? 'unrevealed'}`, ok: matches(v, n, traits), detail: '' }].map((s) => (
+              {steps.slice(0, shown).map((s) => (
                 <li key={s.label} className={s.ok ? 'ok' : 'bad'}>
-                  <span aria-hidden>{s.ok ? '✓' : '✗'}</span>
+                  <PixelTick bad={!s.ok} />
                   <span>{s.label}{s.detail && <span className="muted small">, {s.detail}</span>}</span>
                 </li>
               ))}
+              {checking && <li className="checks-pending"><PixelLoader /><span className="muted">Checking the chain…</span></li>}
             </ul>
           )}
-          {v && (strikeOk
+          {v && !checking && (strikeOk
             ? <p className="verify-ok">✓ Verified. Strike #{n}'s traits follow from the committed rules and the public seed.</p>
             : <p className="error-note">✗ Verification failed. Do not trust these traits.</p>)}
           {state.error && <p className="error-note">{state.error}</p>}

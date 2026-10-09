@@ -72,7 +72,7 @@ export function ActivityFeed({ items, empty = 'No activity yet.' }: { items: TxC
         const d = describe(ch, size);
         return (
           <li key={key} className={`feed-${d.tone}`}>
-            <span className="feed-icon" aria-hidden>{d.icon}</span>
+            <span className="feed-icon" aria-hidden><FeedIcon glyph={d.icon} /></span>
             <span className="feed-text">{d.text}</span>
             <a className="feed-link mono small" href={explorer('tx', tx.signature)} target="_blank" rel="noreferrer">
               slot {tx.slot}
@@ -81,5 +81,42 @@ export function ActivityFeed({ items, empty = 'No activity yet.' }: { items: TxC
         );
       })}
     </ul>
+  );
+}
+
+// Pixel icons for the history, in the site's block style, keyed by the event's symbol above.
+// '#' the event colour, '.' empty.
+const FEED_ICONS: Record<string, string[]> = {
+  // minted: a new coin
+  '◆': ['..###..', '.#####.', '#######', '#######', '#######', '.#####.', '..###..'],
+  // melted or withdrawn: a coin dissolving into loose blocks
+  '♨': ['..###..', '.#####.', '#######', '##.#.##', '#.#.#.#', '.......', '#..#..#'],
+  // sealed or gifted: the Sequents envelope
+  '▣': ['#######', '##...##', '#.#.#.#', '#..#..#', '#######'],
+  '✉': ['#######', '##...##', '#.#.#.#', '#..#..#', '#######'],
+  // an invalid seal: the envelope, only its outline
+  '▢': ['#######', '#.....#', '#.....#', '#.....#', '#######'],
+  // listed or delisted on the desk: a price tag
+  '⌂': ['..#####', '.#....#', '#..#..#', '.#....#', '..#####'],
+  // sold: two arrows passing
+  '⇄': ['....#..', '#######', '....#..', '..#....', '#######', '..#....'],
+  // trait commitment: a padlock
+  '⚿': ['..###..', '.#...#.', '.#...#.', '#######', '###.###', '###.###', '#######'],
+  // traits revealed: a spark
+  '✦': ['...#...', '...#...', '..###..', '#######', '..###..', '...#...', '...#...'],
+  // a roll: a turning arrow
+  '⟳': ['..####.', '.#....#', '#....##', '#......', '#......', '.#....#', '..####.'],
+  // a roll that landed on nothing: a single dot
+  '·': ['.......', '.......', '.......', '...#...', '.......', '.......', '.......'],
+};
+
+function FeedIcon({ glyph }: { glyph: string }) {
+  const rows = FEED_ICONS[glyph];
+  if (!rows) return <>{glyph}</>;
+  const w = Math.max(...rows.map((r) => r.length)), h = rows.length;
+  return (
+    <svg className="feed-pi" viewBox={`0 0 ${w} ${h}`} width={w * 3} height={h * 3} shapeRendering="crispEdges">
+      {rows.flatMap((r, y) => [...r].map((c, x) => (c === '#' ? <rect key={`${x},${y}`} x={x} y={y} width={1} height={1} /> : null)))}
+    </svg>
   );
 }

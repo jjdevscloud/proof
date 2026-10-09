@@ -2,79 +2,69 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import type { Segment } from '../api.ts';
 import { TIER_NAMES, explorer, fmtRange, fmtTokens, short, tier } from '../format.ts';
-import { TraitIcon, coinCells } from './pixels.tsx';
+import { ICONS, PixelIcon, TraitIcon, headlineIcon, traitShare } from './TraitIcons.tsx';
 
-// One full Strike in base units; segment coins show their share of it.
-const STRIKE_BASE = 1_000_000_000_000n;
+// A Strike's picture: a round pixel coin, the same coin as the trait symbols (a Strike is a coin pressed from
+// a die), so it never looks like an envelope. Its blocks fill in the Strike's rarity colour by the share of
+// tokens that survives (`part / whole`), melted blocks grey, from the bottom up. Not yet bought: an outline.
+// Without part/whole it is solid in its colour.
+const COIN_N = 9;
+const COIN = ICONS.common
+  .flatMap((row, y) => [...row].map((c, x) => (c === '.' ? null : [x, y] as [number, number])))
+  .filter((p): p is [number, number] => p !== null)
+  .sort((p, q) => q[1] - p[1] || p[0] - q[0]);
 
-// The coin pixels, filled bottom-up in proportion to the share still surviving.
-const COIN_PIXELS = coinCells(7, 5, 0)
-  .map(([x, y]) => [x + 3, y + 2] as const)
-  .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
-
-export function StrikeCoin({ strike, rank, size = 'md', part, whole }: {
-  strike: number;
-  rank: number;
-  size?: 'sm' | 'md' | 'lg';
-  part?: string | bigint;
-  whole?: string | bigint;
-}) {
-  const gone = whole !== undefined && BigInt(whole) === 0n;
-  const share = whole === undefined || part === undefined ? 1 : gone ? 0 : Number((BigInt(part) * 1000n) / BigInt(whole)) / 1000;
-  const lit = Math.round(share * COIN_PIXELS.length);
+// With `traits`, the picture is the Strike's headline trait instead (its error, or else its date), in its
+// rarity colour, and survival is left to the % shown beside it.
+export function StrikeCoin({ strike, rank, size = 'md', part, whole, traits }: { strike: number; rank: number; size?: 'sm' | 'md' | 'lg'; part?: string | bigint; whole?: string | bigint; traits?: string[] | null }) {
+  const icon = headlineIcon(traits);
+  const unbought = whole !== undefined && BigInt(whole) === 0n;
+  const share = whole === undefined || part === undefined ? 1 : unbought ? 0 : Number((BigInt(part) * 1000n) / BigInt(whole)) / 1000;
+  const lit = Math.round(share * COIN.length);
   return (
-    <a
-      className={`coin coin-${size} t${tier(rank)}`}
-      href={`#/strike/${strike}`}
-      title={`Strike #${strike} · ${TIER_NAMES[tier(rank)]}${whole === undefined ? '' : ` · ${Math.round(share * 1000) / 10}% surviving`}`}
-    >
-      <svg className="coin-grid" viewBox="0 0 7 5" aria-hidden shapeRendering="crispEdges">
-        {COIN_PIXELS.map(([x, y], i) => (
-          <rect key={i} className={gone ? 'cc-out' : i < lit ? 'cc-on' : 'cc-off'} x={x + 0.07} y={y + 0.07} width={0.86} height={0.86} />
-        ))}
-      </svg>
+    <a className={`coin coin-${size} t${tier(rank)}`} href={`#/strike/${strike}`} title={`Strike #${strike} · ${TIER_NAMES[tier(rank)]}${whole !== undefined ? ` · ${Math.round(share * 1000) / 10}% surviving` : ''}`}>
+      {icon ? (
+        <span className={`coin-grid coin-trait${unbought ? ' coin-unbought' : ''}`}><PixelIcon name={icon} tight /></span>
+      ) : (
+        <svg className="coin-grid" viewBox={`0 0 ${COIN_N} ${COIN_N}`} aria-hidden shapeRendering="crispEdges">
+          {COIN.map(([x, y], i) => (
+            <rect key={i} className={unbought ? 'cc-out' : i < lit ? 'cc-on' : 'cc-off'} x={x + 0.07} y={y + 0.07} width={0.86} height={0.86} />
+          ))}
+        </svg>
+      )}
       {size === 'sm' && <span className="coin-num">#{strike}</span>}
     </a>
   );
 }
 
-export function Traits({ traits, rank }: { traits: string[] | null; rank: number }) {
+// `share` adds each trait's share of all Strikes after its name.
+export function Traits({ traits, rank, share = false }: { traits: string[] | null; rank: number; share?: boolean }) {
   if (!traits) return <span className="trait trait-pending">Unrevealed</span>;
   return (
     <span className="traits">
       {traits.map((t) => (
-        <span key={t} className={`trait t${tier(rank)}`}><TraitIcon trait={t} />{t}</span>
+        <span key={t} className={`trait t${tier(rank)}`}><TraitIcon trait={t} />{t}{share && <span className="trait-share">{traitShare(t)}</span>}</span>
       ))}
     </span>
   );
 }
 
 // One row per strike segment: coin, traits, token numbers, amount.
+// A list of Strikes (in pop-ups, envelopes and previews): each one the shared Strike card in a small box,
+// the same as everywhere else, with how many of its tokens are involved as the grey line.
 export function SegmentList({ segments, empty = 'Nothing rare here.' }: { segments: Segment[]; empty?: string }) {
   if (!segments.length) return <p className="muted small">{empty}</p>;
   return (
-    <ul className="segments">
-      {segments.map((s) => (
-        <li key={s.start}>
-          <StrikeCoin strike={s.strike} rank={s.rank} size="sm" part={BigInt(s.end) - BigInt(s.start)} whole={STRIKE_BASE} />
-          <div className="seg-main">
-            <Traits traits={s.traits} rank={s.rank} />
-            <span className="mono small muted">{fmtRange(s.start, s.end)}</span>
+    <div className="env-strikes">
+      {segments.map((s) => {
+        const amount = BigInt(s.end) - BigInt(s.start);
+        return (
+          <div key={s.start} className="strike-mini">
+            <StrikeCardView strike={s.strike} rank={s.rank} traits={s.traits} part={amount} whole={1_000_000_000_000n} sub={`${fmtTokens(amount)} tokens`} />
           </div>
-          <span className="mono seg-amt">{fmtTokens(BigInt(s.end) - BigInt(s.start))}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-// Collapsible extra text behind a "+" toggle.
-export function More({ children }: { children: ReactNode }) {
-  return (
-    <details className="more">
-      <summary aria-label="More" />
-      {children}
-    </details>
+        );
+      })}
+    </div>
   );
 }
 
@@ -197,5 +187,27 @@ export function Toasts() {
         </div>
       ))}
     </div>
+  );
+}
+
+// One Strike, the same everywhere (Strikes, Desk, My wallet): its picture top left, its number and one grey
+// line beside it, its rarity top right (with anything `extra`, like a tick box), its trait tags under it.
+export function StrikeCardView({ strike, rank, traits, sub, part, whole, extra }: {
+  strike: number; rank: number; traits: string[] | null; sub: ReactNode; part?: string | bigint; whole?: string | bigint; extra?: ReactNode;
+}) {
+  const t = tier(rank);
+  return (
+    <>
+      <header className="post-head strike-card-head">
+        <StrikeCoin strike={strike} rank={rank} part={part} whole={whole} traits={traits} />
+        <span className="post-who">
+          <a href={`#/strike/${strike}`} className="strike-title">Strike #{strike}</a>
+          <span className="small muted">{sub}</span>
+        </span>
+        <span className="rarity-tag"><i className={`tier-dot t${t}`} />{TIER_NAMES[t]}</span>
+        {extra}
+      </header>
+      <Traits traits={traits} rank={rank} />
+    </>
   );
 }

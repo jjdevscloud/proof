@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { bumpVersion, subscribe, useApi } from './api.ts';
 import type { Config } from './api.ts';
 import { Vault, useWallet } from './chain.ts';
@@ -10,18 +10,13 @@ import { StrikePage } from './pages/Strike.tsx';
 import { Desk } from './pages/Desk.tsx';
 import { WalletPage } from './pages/Wallet.tsx';
 import { Rules } from './pages/Rules.tsx';
+import { Traits } from './pages/Traits.tsx';
+import { Glossary } from './pages/Glossary.tsx';
+import { Rolls } from './pages/Rolls.tsx';
 import { Prelaunch } from './pages/Prelaunch.tsx';
 import { DEMO } from './demo.ts';
-import { coinCells } from './components/pixels.tsx';
-
-const LOGO = coinCells(7, 5, 0);
-function Logo() {
-  return (
-    <svg className="logo" viewBox="0 0 48 34" aria-hidden shapeRendering="crispEdges">
-      {LOGO.map(([x, y]) => <rect key={`${x},${y}`} x={(x + 3) * 7} y={(y + 2) * 7} width={6} height={6} />)}
-    </svg>
-  );
-}
+import { Logo } from './components/Logo.tsx';
+import { markConnect, takeConnect } from './components/revealOnConnect.ts';
 
 const ConfigContext = createContext<{ config: Config; vault: Vault } | null>(null);
 export function useConfig(): Config {
@@ -44,18 +39,22 @@ function useRoute(): string[] {
   return hash.replace(/^#\/?/, '').split('/').filter(Boolean);
 }
 
+// The pages about the project first, then the live $PROOF pages (data from the chain), split in the nav.
 const NAV = [
   ['', 'Overview'],
+  ['rules', 'Rules'],
+  ['traits', 'Traits'],
+  ['glossary', 'Glossary'],
   ['strikes', 'Strikes'],
+  ['rolls', 'Rolls'],
   ['desk', 'Desk'],
   ['wallet', 'My wallet'],
-  ['rules', 'Rules'],
 ] as const;
+const LIVE_FROM = 'strikes';
 
 export function App() {
   const { data: config, error, reload } = useApi<Config>('/config');
-  // Pre-launch there is no mint, so no vault to talk to: only the Overview and Rules pages render;
-  // every other route shows the Prelaunch page.
+  // Pre-launch there is no mint, so no vault to talk to (only the Prelaunch and Rules pages render).
   const vault = useMemo(() => (config && !config.pending ? new Vault(config) : null), [config]);
   const route = useRoute();
 
@@ -106,6 +105,12 @@ function Page({ route }: { route: string[] }) {
       return <WalletPage address={route[1] ?? null} />;
     case 'rules':
       return <Rules />;
+    case 'traits':
+      return <Traits />;
+    case 'glossary':
+      return <Glossary />;
+    case 'rolls':
+      return <Rolls />;
     default:
       return (
         <div className="panel">
@@ -130,27 +135,42 @@ function Header({ route, pending }: { route: string; pending: boolean }) {
         <button className="icon-btn nav-toggle" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>☰</button>
         <nav className={open ? 'nav open' : 'nav'} onClick={() => setOpen(false)}>
           {NAV.filter(([path]) => !pending || path === '' || path === 'rules').map(([path, label]) => (
-            <a key={path} href={`#/${path}`} className={route === path || (path === 'strikes' && route === 'strike') ? 'active' : ''}>{label}</a>
+            <Fragment key={path}>
+              {/* DRAFT label, awaiting approval. */}
+              {path === LIVE_FROM && <span className="nav-live" aria-label="Live $PROOF data"><i />Live</span>}
+              <a href={`#/${path}`} className={route === path || (path === 'strikes' && route === 'strike') ? 'active' : ''}>{label}</a>
+            </Fragment>
           ))}
         </nav>
         <div className="header-right">
-          <div className="wallet-btn">
-            {pending ? (
-              <span className="pill">Launching soon</span>
-            ) : wallet.address ? (
-              <WalletMenu address={wallet.address} onDisconnect={() => wallet.disconnect()} />
-            ) : wallet.restoring ? (
-              <button className="btn btn-ghost" disabled>Reconnecting…</button>
-            ) : (
-              <button
-                className="btn btn-primary"
-                onClick={() => wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => setErr(e.message))}
-              >
-                Connect wallet
-              </button>
-            )}
-          </div>
-          <a className="btn btn-primary" href="#/wallet">Check my wallet</a>
+        {/* The Sequents account on X: a small square with just the letter X. */}
+        <a className="x-btn" href="https://x.com/sequent_theory" target="_blank" rel="noreferrer" aria-label="Sequents on X">X</a>
+        <div className="wallet-btn">
+          {pending ? (
+            <span className="pill">Launching soon</span>
+          ) : wallet.address ? (
+            <WalletMenu address={wallet.address} onDisconnect={() => wallet.disconnect()} />
+          ) : wallet.restoring ? (
+            <button className="btn btn-ghost" disabled>Reconnecting…</button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={() => { markConnect(); wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => { takeConnect(); setErr(e.message); }); }}
+            >
+              Connect wallet
+            </button>
+          )}
+        </div>
+        {/* The moving button now connects a wallet (it used to link to Check my wallet). Once connected, the
+            wallet menu beside it takes over. */}
+        {!pending && !wallet.address && !wallet.restoring && (
+          <button
+            className="btn btn-primary btn-cycle"
+            onClick={() => { markConnect(); wallet.connect().then(() => (location.hash = '#/wallet')).catch((e) => { takeConnect(); setErr(e.message); }); }}
+          >
+            Connect wallet
+          </button>
+        )}
         </div>
       </div>
       {err && (
@@ -180,8 +200,9 @@ function WalletMenu({ address, onDisconnect }: { address: string; onDisconnect: 
   }, [open]);
   return (
     <div className="wallet-menu">
-      <button className="btn btn-ghost" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
-        <span className="dot" /> {short(address)} <span aria-hidden className="caret">▾</span>
+      {/* Connected: the address inside the same black moving button as Connect wallet. A click opens the menu. */}
+      <button className="btn btn-primary btn-cycle wallet-connected" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}>
+        {short(address)}
       </button>
       {open && (
         <div className="menu" role="menu">

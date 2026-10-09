@@ -1,225 +1,196 @@
 import { useConfig } from '../App.tsx';
-import { Addr, More } from '../components/ui.tsx';
-import { OddsTable } from '../components/Roll.tsx';
+import { Addr } from '../components/ui.tsx';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { StepNav } from '../components/StepNav.tsx';
+import { CoinStream } from '../components/CoinStream.tsx';
+import { PixelIcon, rollIconName } from '../components/TraitIcons.tsx';
+import { tier } from '../format.ts';
+import type { Config } from '../api.ts';
 import { fmtTokens, sol } from '../format.ts';
-
-// Deterministic PRNG so the diagrams render identically every time.
-function seeded(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 1831565813) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function NumberingDiagram() {
-  const ruler = (n: number) => 20 + (n * 480) / 793;
-  const dot = (n: number) => 20 + n * 20;
-  return (
-    <svg className="gfx" viewBox="0 0 520 170" aria-hidden>
-      <line x1={20} y1={30} x2={500} y2={30} />
-      {Array.from({ length: 33 }, (_, i) => i * 25).map((n) => (
-        <line key={n} x1={ruler(n)} y1={30} x2={ruler(n)} y2={n % 100 == 0 ? 22 : 26} />
-      ))}
-      <text x={20} y={14}>0</text>
-      <text x={500} y={14} textAnchor="end">793</text>
-      <rect className="fill-ink" x={496.5} y={26.5} width={7} height={7} />
-      <path className="dash" d={`M20 36 V104 M${ruler(24)} 36 L500 104`} />
-      <line x1={20} y1={110} x2={500} y2={110} />
-      {Array.from({ length: 25 }, (_, n) => (n < 5
-        ? <circle key={n} className="fill-acc" cx={dot(n)} cy={110} r={5.5} />
-        : <circle key={n} className="fill-bg" cx={dot(n)} cy={110} r={3.5} />))}
-      <text x={dot(0)} y={134} textAnchor="middle">0</text>
-      <text x={dot(4)} y={134} textAnchor="middle">4</text>
-      <text x={dot(5)} y={134} textAnchor="middle">5</text>
-      <text x={dot(24)} y={134} textAnchor="middle">24</text>
-      <path d={`M${dot(0)} 146 V152 H${dot(4)} V146 M${dot(5)} 146 V152 H${dot(24)} V146`} />
-    </svg>
-  );
-}
-
-function TwoPlacesDiagram() {
-  const rand = seeded(11);
-  const melt = Array.from({ length: 46 }, () => ({ x: 380 + rand() * 120, y: 86 + (rand() - 0.5) * (12 + rand() * 40) }));
-  return (
-    <svg className="gfx" viewBox="0 0 520 200" aria-hidden>
-      <rect className="fill-ink" x={34} y={92} width={16} height={16} />
-      <path d="M50 100 H170 M170 100 V50 H286 M170 100 V150 H286" />
-      <path className="dash" d="M170 100 H372" />
-      <circle className="fill-bg" cx={170} cy={100} r={3} />
-      <circle className="fill-acc" cx={300} cy={50} r={14} />
-      <circle className="fill-bg" cx={300} cy={150} r={14} />
-      <text x={300} y={54} textAnchor="middle">01</text>
-      <text x={300} y={154} textAnchor="middle">02</text>
-      <path d="M314 50 H380 M314 150 H380" />
-      <circle className="fill-bg" cx={384} cy={50} r={4} />
-      <circle className="fill-bg" cx={384} cy={150} r={4} />
-      {melt.map((m, i) => <rect key={i} className="fill-melt" x={m.x} y={m.y} width={4} height={4} />)}
-    </svg>
-  );
-}
-
-function MeltOrderDiagram() {
-  const pts = [[40, 30], [110, 30], [110, 62], [190, 62], [190, 88], [270, 88], [270, 120], [360, 120], [360, 134], [470, 134]];
-  return (
-    <svg className="gfx" viewBox="0 0 520 170" aria-hidden>
-      <path d="M14 10 V22 M14 10 H26 M506 10 V22 M506 10 H494 M14 160 V148 M14 160 H26 M506 160 V148 M506 160 H494" />
-      {['05', '04', '03', '02', '01'].map((label, i) => <text key={label} x={30} y={34 + i * 26} textAnchor="end">{label}</text>)}
-      <path className="dash" d="M40 146 H480" />
-      <polyline points={pts.map((p) => p.join(',')).join(' ')} />
-      {pts.filter((_, i) => i % 2 == 0).map(([x, y]) => <circle key={`${x}${y}`} className="fill-bg" cx={x} cy={y} r={3.5} />)}
-      {pts.filter((_, i) => i % 2 == 1).map(([x, y]) => <rect key={`${x}${y}`} className="fill-ink" x={x - 3} y={y - 3} width={6} height={6} />)}
-    </svg>
-  );
-}
-
-function SaleDiagram() {
-  return (
-    <svg className="gfx" viewBox="0 0 520 170" aria-hidden>
-      <path d="M80 92 V40 Q80 28 92 28 H428 Q440 28 440 40 V92" />
-      <path className="fill-ink" d="M98 23 L88 28 L98 33 Z" />
-      <circle className="fill-bg" cx={80} cy={110} r={18} />
-      <circle className="fill-bg" cx={440} cy={110} r={18} />
-      <text x={80} y={114} textAnchor="middle">a</text>
-      <text x={440} y={114} textAnchor="middle">b</text>
-      <path className="dash" d="M260 28 V96" />
-      <rect className="fill-acc" x={246} y={96} width={28} height={28} />
-      <path d="M98 110 H230 M290 110 H422" className="dash" />
-      {[160, 200, 320, 360].map((x) => <line key={x} x1={x} y1={22} x2={x} y2={34} />)}
-      <path d="M230 150 H290 M230 146 V154 M290 146 V154" />
-    </svg>
-  );
-}
-
-function FloorDiagram() {
-  const wave = Array.from({ length: 121 }, (_, i) => {
-    const x = 40 + i * 3.67;
-    const y = 70 - Math.sin(i / 6) * 22 - Math.sin(i / 17) * 10;
-    return `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
-  }).join(' ');
-  return (
-    <svg className="gfx" viewBox="0 0 520 150" aria-hidden>
-      <path d={wave} />
-      <path className="dash" d="M40 116 H480" />
-      <path className="fill-ink" d="M28 116 L40 110 L40 122 Z M492 116 L480 110 L480 122 Z" />
-      {Array.from({ length: 45 }, (_, i) => <line key={i} x1={40 + i * 10} y1={128} x2={40 + i * 10} y2={i % 5 ? 132 : 136} />)}
-    </svg>
-  );
-}
+import type { ReactNode } from 'react';
+import { Modal } from '../components/ui.tsx';
+import { EnvelopeFlow, FloorWave, MeltCurve, StrikeRuler, TwoPlaces } from '../components/graphics.tsx';
 
 export function Rules() {
   const config = useConfig();
+  // The rule boxes come in one by one, left to right, as each row scrolls into view.
+  const worksRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const boxes = [...worksRef.current!.children] as HTMLElement[];
+    const cols = Math.max(1, Math.round(worksRef.current!.clientWidth / (boxes[0]?.offsetWidth || 1)));
+    boxes.forEach((b, i) => (b.style.transitionDelay = `${(i % cols) * 220}ms`));
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add('in')), { threshold: 0.2 });
+    boxes.forEach((b) => io.observe(b));
+    return () => io.disconnect();
+  }, []);
+  const [open, setOpen] = useState<number | null>(null);
+  // The check table's rows come in one by one once it scrolls into view.
+  const checkRef = useRef<HTMLElement>(null);
+  const [checkIn, setCheckIn] = useState(false);
+  useEffect(() => {
+    const io = new IntersectionObserver(([e]) => e.isIntersecting && setCheckIn(true), { threshold: 0.3 });
+    io.observe(checkRef.current!);
+    return () => io.disconnect();
+  }, []);
   return (
+    <WorkNav.Provider value={{ open, setOpen, total: config.roll ? 6 : 5 }}>
     <article className="prose">
-      <p className="eyebrow">How Sequents works</p>
-      <h1>Same coin. Two markets.</h1>
-      <More>
-        <p className="lede">
-          A 1964 silver quarter spends as 25 cents at a shop, but a coin dealer pays far more for it — because collectors care
-          <em> which</em> quarter it is. Sequents brings that to $PROOF. Jupiter is the shop. The collector desk is the dealer.
+      {/* DRAFT title, awaiting approval. */}
+      <div className="caption rules-caption"><h1>How Sequent Theory numbers<br />every token.</h1></div>
+      {/* The story, large, in the frame where the overview has its word. */}
+      <div className="frame hero-frame rules-hero">
+        <CoinStream />
+        <p className="lines-text rules-story">A 1955 doubled die penny spends as one cent at a shop but sells to a dealer for thousands, because only a few ever left the mint. Sequents does the same for $PROOF. On Solana every token is equal. On the desk, a collector decides what a rare one is worth.</p>
+      </div>
+      {/* The coin words, three short lines under the frame like the overview's trio. */}
+      <div className="trio">
+        <p><strong>Strike</strong> <span>a coin pressed from a die. Here, a block of one million tokens.</span></p>
+        <p><strong>Error</strong> <span>a flaw from a real mint, like a doubled die. Here, a random trait.</span></p>
+        <p><strong>Melt</strong> <span>a coin taken out of circulation stops being a coin.</span></p>
+      </div>
+      <svg className="scroll-cue" viewBox="0 0 16 28" aria-hidden><path d="M8 1v25M1 19l7 7 7-7" /></svg>
+
+      <div className="works" ref={worksRef}>
+
+      <Work index={0} title="1. Every token has a number" graphic={<StrikeRuler />}>
+      <p>
+        Tokens are numbered in the order they're bought off the bonding curve. Each block of 1,000,000 is a <strong>Strike</strong>.
+        Some Strikes are rare. Position-based tiers (Genesis, Key Date) go to the earliest Strikes; random errors (Double Die and
+        others) are assigned after the sale from a public Solana block, so nobody can know them in advance. The rules are
+        committed on-chain before the first buy, and anyone can verify any Strike from its page.
+      </p>
+      </Work>
+
+      <Work index={1} title="2. Rarity lives in two places only" graphic={<TwoPlaces />}>
+      <ul>
+        <li><strong>The account that bought it off the curve.</strong> Your original purchase keeps its numbers.</li>
+        <li><strong>A sealed envelope.</strong> A vault account controlled by the Sequents program, holding exactly the tokens you sealed.</li>
+      </ul>
+      </Work>
+
+      <Work index={2} title="3. Anything that leaves, melts" graphic={<MeltCurve />}>
+      <p>
+        Sell on Jupiter, send to a friend, sell back to the curve, change the account's owner, or withdraw from an envelope, and
+        the tokens that leave become ordinary $PROOF, permanently. Melted tokens are never rare again, so every melt makes the
+        survivors scarcer.
+      </p>
+      <div className="callout">
+        <strong>Selling some, keeping your rare ones:</strong> when tokens leave an origin account, ordinary tokens go first,
+        then the least rare. Use “What melts if I sell?” on your wallet page before you trade.
+      </div>
+      </Work>
+
+      <Work index={3} title="4. Selling rarity without melting it" graphic={<EnvelopeFlow />}>
+      <p>
+        Seal rare tokens into an envelope and list it on the desk. A buyer pays you and becomes the envelope's holder in one
+        transaction. The tokens never move, so nothing melts. The seller receives the price minus a {config.feeBps / 100}% Sequents
+        desk fee. The buyer can keep it, gift it, relist it, or withdraw (which melts).
+      </p>
+      </Work>
+
+      <Work index={4} title="5. Why the premium can't go below the coin" graphic={<FloorWave />}>
+      <p>
+        A rare lot can always be withdrawn and sold as ordinary $PROOF at market price. The premium is the only part that depends
+        on collectors, and ordinary $PROOF can itself go up or down.
+      </p>
+      </Work>
+
+      {config.roll && (
+        <Work index={5} title="6. Roll an envelope" graphic={<TwoRarities roll={config.roll} />} full={
+          <>
+        <p>
+          Ordinary $PROOF can roll for a rare tier. Seal at least {fmtTokens(config.roll.minEntry)} into an envelope from your
+          wallet page and click Roll ({sol(config.roll.feeLamports)} SOL to the Sequents treasury per roll). The result comes from
+          the first Solana block at least {config.roll.seedDelaySlots} slots after your roll lands, which nobody can know when you
+          click: sha256 of the roll's signature and that block's hash picks the tier, with fixed odds and no limit on how many of
+          each can exist. Your browser computes the result itself in a second or two; the ledger records it once the block is final.
         </p>
-      </More>
-
-      <div className="works">
-        <section className="work">
-          <h2>1. Every token has a number</h2>
-          <NumberingDiagram />
-          <More>
-            <p>
-              Tokens are numbered in the order they're bought off the bonding curve. Each block of 1,000,000 is a <strong>Strike</strong>.
-              Some Strikes are rare. Position-based tiers (Genesis, Key Date) go to the earliest Strikes; random errors (Double Die and
-              others) are assigned after the sale from a public Solana block, so nobody can know them in advance. The rules are
-              committed on-chain before the first buy, and anyone can verify any Strike from its page.
-            </p>
-          </More>
-        </section>
-
-        <section className="work">
-          <h2>2. Rarity lives in two places only</h2>
-          <TwoPlacesDiagram />
-          <More>
-            <ul>
-              <li><strong>The account that bought it off the curve.</strong> Your original purchase keeps its numbers.</li>
-              <li><strong>A sealed envelope.</strong> A vault account controlled by the Sequents program, holding exactly the tokens you sealed.</li>
-            </ul>
-          </More>
-        </section>
-
-        <section className="work">
-          <h2>3. Anything that leaves, melts</h2>
-          <MeltOrderDiagram />
-          <More>
-            <p>
-              Sell on Jupiter, send to a friend, sell back to the curve, change the account's owner, or withdraw from an envelope —
-              the tokens that leave become ordinary $PROOF, permanently. Melted tokens are never rare again, so every melt makes the
-              survivors scarcer.
-            </p>
-            <div className="callout">
-              <strong>Selling some, keeping your rare ones:</strong> when tokens leave an origin account, ordinary tokens go first,
-              then the least rare. Use “What melts if I sell?” on your wallet page before you trade.
-            </div>
-          </More>
-        </section>
-
-        <section className="work">
-          <h2>4. Selling rarity without melting it</h2>
-          <SaleDiagram />
-          <More>
-            <p>
-              Seal rare tokens into an envelope and list it on the desk. A buyer pays you and becomes the envelope's holder in one
-              transaction — the tokens never move, so nothing melts. The seller receives the price minus a {config.feeBps / 100}% Sequents
-              desk fee. The buyer can keep it, gift it, relist it, or withdraw (which melts).
-            </p>
-          </More>
-        </section>
-
-        <section className="work">
-          <h2>5. Why the premium can't go below the coin</h2>
-          <FloorDiagram />
-          <More>
-            <p>
-              A rare lot can always be withdrawn and sold as ordinary $PROOF at market price. The premium is the only part that depends
-              on collectors — and ordinary $PROOF can itself go up or down.
-            </p>
-          </More>
-        </section>
-
-        {config.roll && (
-          <section className="work">
-            <h2>6. Roll an envelope</h2>
-            <OddsTable roll={config.roll} />
-            <More>
-              <p>
-                Ordinary $PROOF can roll for a rare tier. Seal at least {fmtTokens(config.roll.minEntry)} into an envelope from your
-                wallet page and click Roll ({sol(config.roll.feeLamports)} SOL to the Sequents treasury per roll). The result comes from
-                the first Solana block at least {config.roll.seedDelaySlots} slots after your roll lands, which nobody can know when you
-                click: sha256 of the roll's signature and that block's hash picks the tier, with the odds above and no limit on how many of
-                each can exist. Your browser computes the result itself in a second or two; the ledger records it once the block is final.
-              </p>
-              <p>
-                A rolled tier lives on the envelope: list it on the desk, gift it, or keep it. {config.roll.fallback.name} envelopes can roll
-                again. Withdrawing the tokens melts the tier, like any rarity.
-              </p>
-            </More>
-          </section>
-        )}
+        <p>
+          A rolled tier lives on the envelope: list it on the desk, gift it, or keep it. {config.roll.fallback.name} envelopes can roll
+          again. Withdrawing the tokens melts the tier, like any rarity.
+        </p>
+          </>
+        }>
+        {/* DRAFT short version for the box, awaiting approval. The full text is in the pop-up. */}
+        <p>
+          Ordinary $PROOF can roll for a rare tier. Seal at least {fmtTokens(config.roll.minEntry)} into an envelope and roll for
+          {' '}{sol(config.roll.feeLamports)} SOL. The next Solana block decides, with fixed odds and no cap.
+        </p>
+        </Work>
+      )}
       </div>
 
-      <h2>What you can check yourself</h2>
-      <ul>
-        <li>The $PROOF mint: {config.pending ? <span className="muted">announced at launch</span> : <Addr value={config.mint} />}</li>
-        <li>The Sequents vault program: {config.pending ? <span className="muted">deployed at launch</span> : <Addr value={config.vaultProgramId} />}</li>
-        <li>The trait commitment, posted by <Addr value={config.revealAuthority} /> before the first buy</li>
-        <li>Every desk listing runs on-chain safety checks in your browser before you can buy</li>
-        <li>Two independent indexers publish matching ledger fingerprints (shown in the footer)</li>
-      </ul>
-      <p className="muted small">
-        The blockchain sees every $PROOF token as identical. Rarity is defined by the published Sequents rules and computed by our
-        open-source indexer — anyone can replay the chain and get the same result.
-      </p>
+      {/* What you can check yourself, one thing per row. */}
+      <section className="checkable traits-free" ref={checkRef}>
+        <h2>What you can check yourself</h2>
+        <p>
+          The blockchain sees every $PROOF token as identical. Rarity is defined by the published Sequents rules and computed by our
+          open-source indexer. Anyone can replay the chain and get the same result.
+        </p>
+        <table className="table">
+          <tbody>
+            <tr className={checkIn ? 'step in' : 'step'} style={{ transitionDelay: `${0 * 180}ms` }}><td>The $PROOF mint</td><td className="num">{config.pending ? <span className="muted">announced at launch</span> : <Addr value={config.mint} />}</td></tr>
+            <tr className={checkIn ? 'step in' : 'step'} style={{ transitionDelay: `${1 * 180}ms` }}><td>The Sequents vault program</td><td className="num">{config.pending ? <span className="muted">deployed at launch</span> : <Addr value={config.vaultProgramId} />}</td></tr>
+            <tr className={checkIn ? 'step in' : 'step'} style={{ transitionDelay: `${2 * 180}ms` }}><td>The trait commitment, posted before the first buy</td><td className="num"><Addr value={config.revealAuthority} /></td></tr>
+            <tr className={checkIn ? 'step in' : 'step'} style={{ transitionDelay: `${3 * 180}ms` }}><td>Every desk listing runs on-chain safety checks</td><td className="num muted">in your browser, before you can buy</td></tr>
+            <tr className={checkIn ? 'step in' : 'step'} style={{ transitionDelay: `${4 * 180}ms` }}><td>Two independent indexers publish matching ledger fingerprints</td><td className="num muted">shown in the footer</td></tr>
+          </tbody>
+        </table>
+        <a className="btn btn-primary rules-back" href="#/">Back to overview</a>
+      </section>
     </article>
+    </WorkNav.Provider>
+  );
+}
+
+// Which rule is open in the pop-up, shared by the five boxes so the pop-up can step between them.
+const WorkNav = createContext<{ open: number | null; setOpen: (i: number | null) => void; total: number }>({ open: null, setOpen: () => {}, total: 0 });
+
+// One section: its title, its line graphic and the text, all visible. The corner icon opens it large,
+// and the pop-up steps on to the other rules without closing.
+function Work({ index, title, graphic, children, full }: { index: number; title: string; graphic: ReactNode; children: ReactNode; full?: ReactNode }) {
+  const { open, setOpen, total } = useContext(WorkNav);
+  return (
+    <section className="work">
+      <button type="button" className="work-expand" onClick={() => setOpen(index)} aria-label={`Open ${title}`}>
+        <svg viewBox="0 0 14 14" aria-hidden><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" /></svg>
+      </button>
+      <h2>{title}</h2>
+      {graphic}
+      {children}
+      {open === index && (
+        <Modal title={title} onClose={() => setOpen(null)}>
+          <div className="mech-modal work-modal">
+            {graphic}
+            {full ?? children}
+          </div>
+          <StepNav at={index} total={total} onMove={setOpen} label="Rules" />
+        </Modal>
+      )}
+    </section>
+  );
+}
+
+// Box 6's picture: the two ways a token can be rare. On the left the traits a Strike gets from the
+// bonding curve, on the right the tiers an envelope can roll after it. Each with its symbol.
+const CURVE_TRAITS: [string, string, number][] = [
+  ['Genesis', 'genesis', 40], ['Key Date', 'keydate', 15], ['Final Strike', 'final', 10], ['Common Date', 'common', 0],
+  ['Double Die', 'doubledie', 100], ['Wrong Planchet', 'wrongplanchet', 70], ['Off Center', 'offcenter', 50],
+  ['Clipped Planchet', 'clipped', 30], ['Die Crack', 'diecrack', 15],
+];
+function TwoRarities({ roll }: { roll: NonNullable<Config['roll']> }) {
+  const rolled = [...roll.tiers.map((t) => [t.name, t.points] as const), [roll.fallback.name, roll.fallback.points] as const];
+  return (
+    <div className="gfx two-rare">
+      {/* DRAFT labels, awaiting approval. */}
+      <div>
+        <span className="two-rare-head">On the curve</span>
+        <ul>{CURVE_TRAITS.map(([n, icon, p]) => <li key={n} className={`t${tier(p)}`} title={n}><PixelIcon name={icon} unit={2} /></li>)}</ul>
+      </div>
+      <div>
+        <span className="two-rare-head">After the curve</span>
+        <ul>{rolled.map(([n, p]) => <li key={n} className={`t${tier(p)}`} title={n}>{rollIconName(n) && <PixelIcon name={rollIconName(n)!} unit={2} />}</li>)}</ul>
+      </div>
+    </div>
   );
 }
