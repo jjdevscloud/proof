@@ -94,7 +94,8 @@ export function Strikes() {
   const clear = () => { setJump(''); setTiers([]); setTraits([]); setStatuses([]); setPage(0); };
   const pages = Math.max(1, Math.ceil(notable.length / PER_PAGE));
   const pageRows = notable.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
-  const top5 = [...rows].sort((a, b) => b.rank - a.rank || a.strike - b.strike).slice(0, 5);
+  // Only Strikes that still exist: a fully melted Strike can never be collected again.
+  const top5 = (data ?? []).filter((s) => BigInt(s.surviving) > 0n).sort((a, b) => b.rank - a.rank || a.strike - b.strike).slice(0, 5);
 
   return (
     <>
@@ -170,7 +171,7 @@ export function Strikes() {
           <div className="feature-inner">
             {/* DRAFT heading and line, awaiting approval. */}
             <div className="panel-head panel-head-stack">
-              <h2>The 5 rarest Strikes</h2>
+              <h2>The 5 rarest surviving Strikes</h2>
               <p className="muted list-sub">The top of the ledger right now. The ones collectors want.</p>
             </div>
             <ul className="strike-feature">
